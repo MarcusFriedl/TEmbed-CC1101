@@ -4,12 +4,13 @@
 #include "scanner.h"
 #include "sys.h"
 
-#define PIN_DIO1 33
-#define PIN_DIO2 32
-
 extern "C" {
     void PIN_INT3_IRQHandler2(unsigned int bit);
 }
+
+extern uint8_t PIN_DIO1;
+
+IRAM_ATTR void onDIO1Edge();
 
 SYS_Handle sys;
 SCANNER_Handle scanner;
@@ -22,13 +23,13 @@ const size_t xStreamBufferSizeBytes = 1024;
 const size_t xTriggerLevel = 1; 
 
 int i_cntr = 0,*hc=0;
-IRAM_ATTR void onDIO1Edge() {
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    uint8_t bit = (GPIO.in1.val /*>> (PIN_DIO2 - 32)*/) & 0x01;
-//    xTaskNotifyFromISR(xTaskSyncDet, bit, eSetValueWithOverwrite, &xHigherPriorityTaskWoken);
-    xStreamBufferSendFromISR(xBitBuffer, &bit, 1, &xHigherPriorityTaskWoken);
-    if (xHigherPriorityTaskWoken == pdTRUE) { portYIELD_FROM_ISR(); }
-}
+// IRAM_ATTR void onDIO1Edge() {
+//     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+//    // uint8_t bit = (GPIO.in1.val /*>> (PIN_DIO2 - 32)*/) & 0x01;
+//     uint8_t bit = digitalRead(PIN_DIO2);
+//     xStreamBufferSendFromISR(xBitBuffer, &bit, 1, &xHigherPriorityTaskWoken);
+//     if (xHigherPriorityTaskWoken == pdTRUE) { portYIELD_FROM_ISR(); }
+// }
 
 void SYNCDET_thread (void *param)
 { 
@@ -58,8 +59,6 @@ void setup() {
    xTaskCreate(SYS_thread,     "System",  50000, (void *)sys,     30, NULL);
    xTaskCreate(SCANNER_thread, "Scanner", 20000, (void *)scanner, 20, &xTaskScanner);
 
-   pinMode(PIN_DIO1, INPUT);   
-   pinMode(PIN_DIO2, INPUT);
    attachInterrupt(PIN_DIO1, onDIO1Edge, RISING);
   }
 

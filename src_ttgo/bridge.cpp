@@ -1,7 +1,7 @@
 #include "bridge.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h" 
-#include "LILYGO.h" 
+#include "lilygo.h" 
 #include "CRC16.h"
 #include "CRC.h"
 //#include <string>

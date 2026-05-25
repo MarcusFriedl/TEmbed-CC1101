@@ -12,38 +12,50 @@
 #include <esp_log.h>
 #include <driver/adc.h>
 #include "esp_adc_cal.h"
-
-#define PIN_MISO 19
-#define PIN_MOSI 27
-#define PIN_SCK  5
-#define PIN_CS   18
-#define PIN_RST  23
-#define SDA_OLED 21
-#define SCL_OLED 22
-#define PIN_BAT  35
+#include "freertos/stream_buffer.h"
 
 #define SX127x_FREQUENCY_STEP_SIZE   61.03515625 // in Hz (32 MHz / 2^19)
 
-SSD1306Wire  display(0x3c, SDA_OLED, SCL_OLED, GEOMETRY_128_64,I2C_TWO, 500000); 
+SSD1306Wire* display = nullptr;
 static const char* TAG = "HP";
 int taskCalled_Cntr = 0;
+uint8_t PIN_DIO1 = 0;
+extern StreamBufferHandle_t xBitBuffer;
+
+BoardPins espBoard;
 
 void handleConsole(const char *cmd);
 
+IRAM_ATTR void onDIO1Edge() {
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+   // uint8_t bit = (GPIO.in1.val /*>> (PIN_DIO2 - 32)*/) & 0x01;
+    uint8_t bit = digitalRead(espBoard.lora_dio1);
+    xStreamBufferSendFromISR(xBitBuffer, &bit, 1, &xHigherPriorityTaskWoken);
+    if (xHigherPriorityTaskWoken == pdTRUE) { portYIELD_FROM_ISR(); }
+}
+
 static void screenSaverCallback(TimerHandle_t xTimer)    {
-    display.displayOff();
+    display->displayOff();
 }
 
 LilyGo::LilyGo() {
     // Constructor implementation
     pinMode(LED_BUILTIN, OUTPUT);
-    pinMode(14, OUTPUT);
+    if(isBoardTTGO) {
+        pinMode(espBoard.bat_adc, OUTPUT);
+    }
+    else if(isBoardHELTEC) {
+        pinMode(espBoard.oled_rst, OUTPUT);
+    }
+
     rssi = -128;
 }
 
 void LilyGo::setup() {
     uint8_t baseMac[6];
     
+    detectBoard();
+    display = new SSD1306Wire(OLED_I2C_ADDRESS, espBoard.oled_sda, espBoard.oled_scl, GEOMETRY_128_64,I2C_TWO, 500000);
     BTisConnected = false;
     BLE_setup(true);   
     esp_base_mac_addr_get(baseMac);   
@@ -60,6 +72,31 @@ void LilyGo::setup() {
     }
 }   
 
+void LilyGo::detectBoard() {
+    uint32_t flashSize = ESP.getFlashChipSize();
+
+    if (flashSize >= 8 * 1024 * 1024) {
+        espBoard = {
+            "Heltec WiFi LoRa 32 V2",
+            5, 19, 27, 18, 14, 26, 35, 34, // LoRa (SCK, MISO, MOSI, SS, RST, DIO0, DIO1, DIO2)
+            4, 15, 16, 35                    // OLED (SDA, SCL, RST), BAT
+        };
+        isBoardHELTEC = true;
+    }
+
+    if (flashSize == 4 * 1024 * 1024) {
+        espBoard = {
+            "TTGO LoRa32 V2.1 (1.6)",
+            5, 19, 27, 18, 23, 26, 33, 32, // LoRa (SCK, MISO, MOSI, SS, RST, DIO0, DIO1, DIO2)
+            21, 22, 16, 14                 // OLED (SDA, SCL, RST), BAT
+        };
+        isBoardTTGO = true;
+    }
+    PIN_DIO1 = espBoard.lora_dio1;
+
+    Serial.printf("Detected %s\n", espBoard.boardName);
+}
+
 void LilyGo::setMsgQueue(QueueHandle_t q) { 
     BLE_setMsgQueue(q);
 }
@@ -67,27 +104,27 @@ void LilyGo::setMsgQueue(QueueHandle_t q) {
 void LilyGo::setBtState(bool state) {
     BTisConnected = state;
 
-    display.setColor(BTisConnected ? WHITE : BLACK);          
+    display->setColor(BTisConnected ? WHITE : BLACK);          
     switch(activeScreen)
     {
         case SCREEN_STARTUP:
-            display.setFont(ArialMT_Plain_16);
-            display.setTextAlignment(TEXT_ALIGN_LEFT);
-            display.drawString(0, 37, "B  T");
+            display->setFont(ArialMT_Plain_16);
+            display->setTextAlignment(TEXT_ALIGN_LEFT);
+            display->drawString(0, 37, "B  T");
             break;
         case SCREEN_SONDEDATA:
             if(BTisConnected){
-              display.drawIco16x16(0,0, &BTon[0]);
+              display->drawIco16x16(0,0, &BTon[0]);
             }
             else{
-              display.fillRect(0,0,16,16);
+              display->fillRect(0,0,16,16);
             }
             break;
     }
     
-    display.display();
-    display.displayOn();
-    display.setColor(WHITE);
+    display->display();
+    display->displayOn();
+    display->setColor(WHITE);
     xTimerReset( screenSaverTimer, 0);
 }
 
@@ -98,7 +135,7 @@ void LilyGo::OLED_setup(){
 
  void LilyGo::OLED_show(bool state){
     screenIsOff = !state;
-    state ? display.displayOn() : display.displayOff();
+    state ? display->displayOn() : display->displayOff();
  }
 
 
@@ -110,11 +147,15 @@ uint32_t LilyGo::getSerialNo() {
 float LilyGo::getBatVoltage()
 {
     float vBattOld = vBatt;
-    digitalWrite(14, HIGH);
+    if(isBoardTTGO) {
+        digitalWrite(espBoard.bat_adc, HIGH);
+    }
     delay(1);
-    vBatt = (analogRead(PIN_BAT) / 4095.0 * 2 * 3.3 * voltageCalibrationFactor); 
+    vBatt = (analogRead(espBoard.bat_adc) / 4095.0 * 2 * 3.3 * voltageCalibrationFactor); 
                        // voltage divider 100k/100k, ADC ref 3.3V, calibration;
-    digitalWrite(14, LOW);
+    if(isBoardTTGO) {
+        digitalWrite(espBoard.bat_adc, LOW);
+    }
     if(vBatt > 4.17)   // Simple threshold to detect charging state, adjust as needed
         isCharging = true;  
     else if(vBatt > vBattOld + 0.01)
@@ -162,18 +203,18 @@ void LilyGo::EEPROM_writeCfg(uint8_t detector)
 }
 
 uint8_t sx1278ReadRegister(uint8_t reg) {
-  digitalWrite(PIN_CS, LOW);
+  digitalWrite( espBoard.lora_ss, LOW);
   SPI.transfer(reg & 0x7F); // read command
   uint8_t value = SPI.transfer(0x00);
-  digitalWrite(PIN_CS, HIGH);
+  digitalWrite( espBoard.lora_ss, HIGH);
   return value;
 }
 
 void sx1278WriteRegister0(uint8_t reg, uint8_t value) {
-  digitalWrite(PIN_CS, LOW);
+  digitalWrite(espBoard.lora_ss, LOW);
   SPI.transfer(reg | 0x80); // write command
   SPI.transfer(value);
-  digitalWrite(PIN_CS, HIGH);
+  digitalWrite(espBoard.lora_ss, HIGH);
 }
 
 void LilyGo::SX1278_readRSSI(float* newLevel)
@@ -200,9 +241,9 @@ float LilyGo::SX1278_setRadioFrequencyHz(uint32_t freqInHz, bool needRssi) {
     spiBuff[3] = freq & 0xFF; freq >>= 8;
     spiBuff[2] = freq & 0xFF; freq >>= 8;
     spiBuff[1] = freq & 0xFF; 
-    digitalWrite(PIN_CS, LOW);  //Enable radio chip-select
+    digitalWrite(espBoard.lora_ss, LOW);  //Enable radio chip-select
     SPI.transfer(spiBuff, 4);
-    digitalWrite(PIN_CS, HIGH); //Disable radio chip-select  
+    digitalWrite(espBoard.lora_ss, HIGH); //Disable radio chip-select  
     sx1278WriteRegister0(0x01, 0x04);   // FSRX mode
     delay(2);                           // TS_FS (standby->FSRX) = 60 us
     sx1278WriteRegister0(0x01, 0x05);   // RX mode
@@ -219,16 +260,18 @@ float LilyGo::SX1278_setRadioFrequencyHz(uint32_t freqInHz, bool needRssi) {
 
 
 void LilyGo::SX1278_setup() {
-    pinMode(PIN_CS, OUTPUT);
-    pinMode(PIN_RST, OUTPUT);
+    pinMode(espBoard.lora_dio1, INPUT);   
+    pinMode(espBoard.lora_dio2, INPUT);
+    pinMode(espBoard.lora_ss, OUTPUT);
+    pinMode(espBoard.lora_rst, OUTPUT);
 
-    digitalWrite(PIN_CS, HIGH); // Deselect the SX1278
+    digitalWrite(espBoard.lora_ss, HIGH); // Deselect the SX1278
     // SPI setup
-    SPI.begin(PIN_SCK, PIN_MISO, PIN_MOSI, PIN_CS);
+    SPI.begin(espBoard.lora_sck, espBoard.lora_miso, espBoard.lora_mosi, espBoard.lora_ss);
     // Reset the SX1278
-    digitalWrite(PIN_RST, LOW);
+    digitalWrite(espBoard.lora_rst, LOW);
     delay(100);
-    digitalWrite(PIN_RST, HIGH);
+    digitalWrite(espBoard.lora_rst, HIGH);
     delay(100);
 
     screenSaverTimer = xTimerCreate( "SCREENSAVER-Timer",pdMS_TO_TICKS(60000), pdFALSE, (void *)NULL, screenSaverCallback);
@@ -334,85 +377,90 @@ void LilyGo::OLED_drawScreen(uint8_t screen, bool disableScreenSaver)
 
     switch (activeScreen) {
         case SCREEN_STARTUP:
-            display.init();
-            display.flipScreenVertically();
-            display.clear();
-            display.displayOn();
-            display.setColor(WHITE);
-            display.drawXbm(0, 0, image_width, image_height, image_bits);
-            display.setFont(ArialMT_Plain_24);
-            display.setTextAlignment(TEXT_ALIGN_RIGHT);
-            display.drawStringf(128,42,s,"V%d.%d",FIRMWARE_VERSION_MAJOR,FIRMWARE_VERSION_MINOR);
+            if(isBoardHELTEC) {
+                digitalWrite(espBoard.oled_rst, LOW);
+                delay(50);
+                digitalWrite(espBoard.oled_rst, HIGH);
+            }
+            display->init();
+            display->flipScreenVertically();
+            display->clear();
+            display->displayOn();
+            display->setColor(WHITE);
+            display->drawXbm(0, 0, image_width, image_height, image_bits);
+            display->setFont(ArialMT_Plain_24);
+            display->setTextAlignment(TEXT_ALIGN_RIGHT);
+            display->drawStringf(128,42,s,"V%d.%d",FIRMWARE_VERSION_MAJOR,FIRMWARE_VERSION_MINOR);
             break;
         case SCREEN_SONDEDATA:
             xTimerReset(screenSaverTimer, 0);
-            display.clear();
-            display.setColor(WHITE);
-            display.setFont(ArialMT_Plain_16);
-            display.setTextAlignment(TEXT_ALIGN_CENTER);
-            display.drawStringf(63,0,s,"%6.3f",freqMhz);
-            display.setTextAlignment(TEXT_ALIGN_LEFT);
-            display.drawStringf(0,32,s,"%7.5f",lat);
-            display.drawStringf(0,48,s,"%7.5f",lon);
-            display.drawStringf(0,16,s,"%s",id);
-            display.setTextAlignment(TEXT_ALIGN_RIGHT);
-            display.drawStringf(127,32,s,"%.0f  ",alt);
-            display.setFont(ArialMT_Plain_10);
-            display.drawString(127,37,"m");
+            display->clear();
+            display->setColor(WHITE);
+            display->setFont(ArialMT_Plain_16);
+            display->setTextAlignment(TEXT_ALIGN_CENTER);
+            display->drawStringf(63,0,s,"%6.3f",freqMhz);
+            display->setTextAlignment(TEXT_ALIGN_LEFT);
+            display->drawStringf(0,32,s,"%7.5f",lat);
+            display->drawStringf(0,48,s,"%7.5f",lon);
+            display->drawStringf(0,16,s,"%s",id);
+            display->setTextAlignment(TEXT_ALIGN_RIGHT);
+            display->drawStringf(127,32,s,"%.0f  ",alt);
+            display->setFont(ArialMT_Plain_10);
+            display->drawString(127,37,"m");
             OLED_drawBat();
             OLED_drawRSSI();
             if(BTisConnected )
-                display.drawIco16x16(0,0, &BTon[0]);
+                display->drawIco16x16(0,0, &BTon[0]);
 
             break;
         case SCREEN_DEBUG: 
             char dbgMsg[20];
-            display.clear();
-            display.setColor(WHITE);
-            display.setFont(ArialMT_Plain_16);
-            display.setTextAlignment(TEXT_ALIGN_LEFT);
-            //display.drawString(0, 0,dbgMsg);
+            display->clear();
+            display->setColor(WHITE);
+            display->setFont(ArialMT_Plain_16);
+            display->setTextAlignment(TEXT_ALIGN_LEFT);
+            //display->drawString(0, 0,dbgMsg);
             if(debug_RS41BlockCntr > 0)
             {
-                display.drawStringf(0,16,dbgMsg,"C:%d/%d",debug_RS41CrcCntr,debug_RS41BlockCntr);
-                display.drawStringf(0,32,dbgMsg,"#%d",debug_RS41frameNr);
+                display->drawStringf(0,16,dbgMsg,"C:%d/%d",debug_RS41CrcCntr,debug_RS41BlockCntr);
+                display->drawStringf(0,32,dbgMsg,"#%d",debug_RS41frameNr);
             }
-            display.drawStringf(0,48,dbgMsg,"R:%s",rereMsg[esp_reset_reason()]);
-            display.setTextAlignment(TEXT_ALIGN_RIGHT);
+            display->drawStringf(0,48,dbgMsg,"R:%s",rereMsg[esp_reset_reason()]);
+            display->setTextAlignment(TEXT_ALIGN_RIGHT);
             if(debug_RS41BlockCntr > 0)
-                display.drawStringf(127,16,dbgMsg,"%ds",debug_age);
-            display.drawStringf(127,32,dbgMsg,"%.1fdB",rssi);
+                display->drawStringf(127,16,dbgMsg,"%ds",debug_age);
+            display->drawStringf(127,32,dbgMsg,"%.1fdB",rssi);
             break;
         case SCREEN_SCANNER: 
-            display.clear();
-            display.setColor(WHITE);
-            display.setFont(ArialMT_Plain_16);    
-            display.setTextAlignment(TEXT_ALIGN_LEFT);
-            display.drawStringf(0,0 ,s,"%6.2f",topSignals[0].freq/100.0);
-            display.drawStringf(0,16,s,"%6.2f",topSignals[1].freq/100.0);
-            display.drawStringf(0,32,s,"%6.2f",topSignals[2].freq/100.0);
-            display.drawStringf(0,48,s,"%6.2f",topSignals[3].freq/100.0);
-            display.setTextAlignment(TEXT_ALIGN_RIGHT);
-            display.drawStringf(127,0 ,s,"%.1fdB",topSignals[0].rssi);
-            display.drawStringf(127,16,s,"%.1fdB",topSignals[1].rssi);
-            display.drawStringf(127,32,s,"%.1fdB",topSignals[2].rssi);
-            display.drawStringf(127,48,s,"%.1fdB",topSignals[3].rssi);
+            display->clear();
+            display->setColor(WHITE);
+            display->setFont(ArialMT_Plain_16);    
+            display->setTextAlignment(TEXT_ALIGN_LEFT);
+            display->drawStringf(0,0 ,s,"%6.2f",topSignals[0].freq/100.0);
+            display->drawStringf(0,16,s,"%6.2f",topSignals[1].freq/100.0);
+            display->drawStringf(0,32,s,"%6.2f",topSignals[2].freq/100.0);
+            display->drawStringf(0,48,s,"%6.2f",topSignals[3].freq/100.0);
+            display->setTextAlignment(TEXT_ALIGN_RIGHT);
+            display->drawStringf(127,0 ,s,"%.1fdB",topSignals[0].rssi);
+            display->drawStringf(127,16,s,"%.1fdB",topSignals[1].rssi);
+            display->drawStringf(127,32,s,"%.1fdB",topSignals[2].rssi);
+            display->drawStringf(127,48,s,"%.1fdB",topSignals[3].rssi);
             break;
         case SCREEN_SHUTDOWN:
-            display.clear();
-            display.setColor(WHITE);
-            display.setFont(ArialMT_Plain_24);
-            display.setTextAlignment(TEXT_ALIGN_CENTER);
-            display.drawString(63,24,"Sleeping...");
-            display.display();
+            display->clear();
+            display->setColor(WHITE);
+            display->setFont(ArialMT_Plain_24);
+            display->setTextAlignment(TEXT_ALIGN_CENTER);
+            display->drawString(63,24,"Sleeping...");
+            display->display();
             vTaskDelay(3000/portTICK_PERIOD_MS);
-            display.displayOff();
+            display->displayOff();
             break;
         default:
             break;  
     }
 
-    display.display();
+    display->display();
 }
 
 void LilyGo::toggleDebugScreen()
@@ -454,7 +502,7 @@ void LilyGo::OLED_updateVoltage(float vBatt_in)
         vBattLast = vBatt_in;
         if(activeScreen == SCREEN_SONDEDATA){
             OLED_drawBat();
-            display.display();
+            display->display();
         }   
     }
 }
@@ -466,21 +514,21 @@ void LilyGo::OLED_drawBat()
     //4.19 voll mit laden
     //3.8 nach 4h
     
-    //display.drawProgressBar(104, 2, 24, 12, 50/*(uint8_t)(vBatt*100/4.2)*/);
+    //display->drawProgressBar(104, 2, 24, 12, 50/*(uint8_t)(vBatt*100/4.2)*/);
 
-    display.drawRect(104, 2, 24, 12);
-    display.fillRect(102, 6, 2, 4);
+    display->drawRect(104, 2, 24, 12);
+    display->fillRect(102, 6, 2, 4);
 
     // if(isCharging)
     // {
-    //     display.drawXbm(112, 3, 8, 10, bolt_tiny);
+    //     display->drawXbm(112, 3, 8, 10, bolt_tiny);
     // }
     // else
     {  
         int empty = (int)((4.0 - vBatt)*18.3);  
         if(empty < 0) 
           empty = 0;
-        display.fillRect(106+empty, 4, 20-empty, 8);
+        display->fillRect(106+empty, 4, 20-empty, 8);
     }
 }
 
@@ -496,14 +544,14 @@ void LilyGo::OLED_drawRSSI()
 //   for(int i = 0; i < 5; i++)
 //   {
 //     if(i==n)
-//       display.setColor(BLACK);
-//     display.fillRect(103+i*5, 53, 4, 10);
+//       display->setColor(BLACK);
+//     display->fillRect(103+i*5, 53, 4, 10);
 //   }
-//   display.setColor(WHITE);
+//   display->setColor(WHITE);
     char s[20];
-    display.setTextAlignment(TEXT_ALIGN_RIGHT);
-    display.setFont(ArialMT_Plain_16);
-    display.drawStringf(127,48,s,"%.0fdB",rssi);
+    display->setTextAlignment(TEXT_ALIGN_RIGHT);
+    display->setFont(ArialMT_Plain_16);
+    display->drawStringf(127,48,s,"%.0fdB",rssi);
 }
 
 void LilyGo::handleConsole(const char *cmd)

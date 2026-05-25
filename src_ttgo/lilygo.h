@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include "freertos/FreeRTOS.h" 
 #include "freertos/queue.h"    
+#include "Wire.h"
 #include <ble.h>
 #include "espPorting.h"
 
@@ -27,11 +28,27 @@ struct Signal {
     float    rssi = -120;
 };
 
+struct BoardPins {
+    const char* boardName;
+    int lora_sck;
+    int lora_miso;
+    int lora_mosi;
+    int lora_ss;
+    int lora_rst;
+    int lora_dio0;
+    int lora_dio1;
+    int lora_dio2;
+    int oled_sda;
+    int oled_scl;
+    int oled_rst;
+    int bat_adc;
+};
 
 class LilyGo {
 public:
     LilyGo();
     void setup();
+    void detectBoard();
     void a100msTask();
     void setMsgQueue(QueueHandle_t q); 
     uint32_t getSerialNo(); 
@@ -73,7 +90,7 @@ private:
 
     int guiCmdIdx = 0, 
         debug_age = 0, debug_RS41frameNr = 0, debug_RS41CrcCntr = 0, debug_RS41BlockCntr = 0;
-    bool BTisConnected, isCharging = false, screenIsOff = false;
+    bool BTisConnected, isCharging = false, screenIsOff = false, isBoardTTGO = false, isBoardHELTEC = false;
     uint8_t activeScreen = SCREEN_STARTUP, detectorInEeprom;
     uint32_t latestDebugMsg,frequencyInEeprom,SerialNoEsp,versionBT = 0x05000000;
     double lat,lon,alt;
