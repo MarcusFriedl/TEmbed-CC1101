@@ -19,7 +19,7 @@
 #ifdef FIRMWARE_VERSION_MINOR   
 #undef FIRMWARE_VERSION_MINOR
 #endif
-#define FIRMWARE_VERSION_MINOR       7
+#define FIRMWARE_VERSION_MINOR       71
 
 #define __REV(x)   __builtin_bswap32(x)
 #define __REV16(x) __builtin_bswap16(x)

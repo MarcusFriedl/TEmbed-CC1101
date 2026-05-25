@@ -63,11 +63,12 @@ extern "C" {
 
     void ttgo_sendBtMessage( char* msg)
     {
-    //    myLilyGoBoard.getInfosFromMsg(msg);
-        // if(strncmp(msg,"#3,3",4) != 0)
-        // {
-        //     ESP_LOGE("HP","BT: %s",msg);
-        // }
+       //myLilyGoBoard.getInfosFromMsg(msg);
+        if(strncmp(msg,"#3,3",4) != 0)
+        {
+            //ESP_LOGE("HP","BT: %s",msg);
+            Serial.println(msg);
+        }
 
         if (pRxCharacteristic != nullptr) {
             int16_t l = strlen(msg);
