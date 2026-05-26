@@ -40,12 +40,6 @@ static void screenSaverCallback(TimerHandle_t xTimer)    {
 LilyGo::LilyGo() {
     // Constructor implementation
     pinMode(LED_BUILTIN, OUTPUT);
-    if(isBoardTTGO) {
-        pinMode(espBoard.bat_adc, OUTPUT);
-    }
-    else if(isBoardHELTEC) {
-        pinMode(espBoard.oled_rst, OUTPUT);
-    }
 
     rssi = -128;
 }
@@ -54,6 +48,12 @@ void LilyGo::setup() {
     uint8_t baseMac[6];
     
     detectBoard();
+    if(isBoardTTGO) {
+//        pinMode(14, OUTPUT);
+        pinMode(espBoard.bat_adc, INPUT);
+    }else if(isBoardHELTEC) {
+        pinMode(espBoard.oled_rst, OUTPUT);
+    }
     display = new SSD1306Wire(OLED_I2C_ADDRESS, espBoard.oled_sda, espBoard.oled_scl, GEOMETRY_128_64,I2C_TWO, 500000);
     BTisConnected = false;
     BLE_setup(true);   
@@ -78,7 +78,7 @@ void LilyGo::detectBoard() {
         espBoard = {
             "Heltec WiFi LoRa 32 V2",
             5, 19, 27, 18, 14, 26, 35, 34, // LoRa (SCK, MISO, MOSI, SS, RST, DIO0, DIO1, DIO2)
-            4, 15, 16, 35                  // OLED (SDA, SCL, RST), BAT
+            4, 15, 16, 13                  // OLED (SDA, SCL, RST), BAT
         };
         isBoardHELTEC = true;
     }
@@ -146,15 +146,15 @@ uint32_t LilyGo::getSerialNo() {
 float LilyGo::getBatVoltage()
 {
     float vBattOld = vBatt;
-    if(isBoardTTGO) {
-        digitalWrite(14, HIGH);
-    }
-    delay(1);
+    // if(isBoardTTGO) {
+    //     digitalWrite(14, HIGH);
+    // }
+    // delay(1);
     vBatt = (analogRead(espBoard.bat_adc) / 4095.0 * 2 * 3.3 * voltageCalibrationFactor); 
                        // voltage divider 100k/100k, ADC ref 3.3V, calibration;
-    if(isBoardTTGO) {
-        digitalWrite(14, LOW);
-    }
+    // if(isBoardTTGO) {
+    //     digitalWrite(14, LOW);
+    // }
     if(vBatt > 4.17)   // Simple threshold to detect charging state, adjust as needed
         isCharging = true;  
     else if(vBatt > vBattOld + 0.01)
