@@ -64,7 +64,7 @@
 #include "rs92.h"
 // #include "srsc.h"
 #include "sys.h"
-// #include "windsond.h"
+#include "windsond.h"
 #include "config.h"
 #if (BOARD_RA == 2)
 #include "usbuser_config.h"
@@ -161,7 +161,7 @@ struct SYS_Context {
     // PSB3_Handle psb3;
     // SRSC_Handle srsc;
     MEISEI_Handle meisei;
-    // WINDSOND_Handle windsond;
+    WINDSOND_Handle windsond;
     // MTS01_Handle mts01;
     // PDM_Handle pdm;
 
@@ -694,6 +694,18 @@ static const SX1278_Config radioModeMeisei[] = {
     { 0xFF, 0xFF } // Ende-Markierung
 };
 
+static const SX1278_Config radioModeWindsond[] = { 
+    { .reg = 0x01, .value = 0b00000000 }, // RegOpMode -> FSK Mode sleep
+    { .reg = 0x02, .value = 0x34},        // RegBitrateMsb -> 2400 bps 
+    { .reg = 0x03, .value = 0x15},        // RegBitrateLsb
+    { .reg = 0x04, .value = 0x02 },       // RegFdevMsb -> 34 kHz
+    { .reg = 0x05, .value = 0x2D },       // RegFdevLsb 
+    { .reg = 0x12, .value = 0x0A },       // RegRxBw  -> 83.3 kHz   
+    { .reg = 0x13, .value = 0x0A },       // RegAfcBw -> 83.3 kHz  
+    { .reg = 0x0D, .value = 0b11111110 }, // RegRxConfig -> AFC & AGC, gain by AGC
+    { 0xFF, 0xFF } // Ende-Markierung
+};
+
 static const SX1278_Config radioModeC34C50[] = {   //used for scanner init
     { .reg = 0x01, .value = 0b00000000 }, // RegOpMode -> FSK Mode sleep
     { .reg = 0x0C, .value = 0b11000000 }, // highest gain – 48 dB
@@ -1064,16 +1076,22 @@ LPCLIB_Result SYS_enableDetector (SYS_Handle handle, float frequency, SONDE_Dete
                 MAILBOX_IRQHandler((uint32_t)1u << 5);
                 break;
 
-//             case SONDE_DETECTOR_WINDSOND:
-//                 ADF7021_setDemodClockDivider(radio, CONFIG_getDemodClockDivider(2400));
-//                 ADF7021_setBitRate(radio, 2400);
-//                 ADF7021_ioctl(radio, radioModeWindsond);
+            case SONDE_DETECTOR_WINDSOND:
+#ifndef RX_SX1278   
+                ADF7021_setDemodClockDivider(radio, CONFIG_getDemodClockDivider(2400));
+                ADF7021_setBitRate(radio, 2400);
+                ADF7021_ioctl(radio, radioModeWindsond);
+#else
+                SX1278_ioctl(radioModeWindsond);
+                SX1278_setBitRate(2400);
+#endif
 
-//                 _SYS_setRadioFrequency(handle, frequency);
-//                 _SYS_reportRadioFrequency(handle);  /* Inform host */
+                _SYS_setRadioFrequency(handle, frequency);
+                _SYS_reportRadioFrequency(handle);  /* Inform host */
 
-//                 LPC_MAILBOX->IRQ0SET = (1u << 7); //TODO
-//                 break;
+                //LPC_MAILBOX->IRQ0SET = (1u << 7); //TODO
+                MAILBOX_IRQHandler((uint32_t)1u << 7);
+                break;
 
             case SONDE_DETECTOR_RS41_RS92:
 #ifndef RX_SX1278
@@ -2334,7 +2352,7 @@ void SYS_thread (void *param)
     M10_open(&handle->m10);
     M20_open(&handle->m20);
     MEISEI_open(&handle->meisei);
-//     WINDSOND_open(&handle->windsond);
+    WINDSOND_open(&handle->windsond);
 //     MRZ_open(&handle->mrz);
 //     PILOT_open(&handle->pilot);
     CF06_open(&handle->cf06);
@@ -2624,19 +2642,19 @@ void SYS_thread (void *param)
                         //             SCANNER_notifyValidFrame(scanner);
                         //         }
                         //     }
-                        //     else if (sondeType == SONDE_WINDSOND_S1) {
-                        //         if (WINDSOND_processBlock(
-                        //                 handle->windsond,
-                        //                 sondeType,
-                        //                 ipc[bufferIndex].data8,
-                        //                 ipc[bufferIndex].numBits,
-                        //                 handle->currentFrequency,
-                        //                 SYS_getFrameRssi(handle),
-                        //                 handle->realTime) == LPCLIB_SUCCESS) {
-                        //             /* Frame complete. Let scanner prepare for next frequency */
-                        //             SCANNER_notifyValidFrame(scanner);
-                        //         }
-                        //     }
+                            else if (sondeType == SONDE_WINDSOND_S1) {
+                                if (WINDSOND_processBlock(
+                                        handle->windsond,
+                                        sondeType,
+                                        ipc[bufferIndex].data8,
+                                        ipc[bufferIndex].numBits,
+                                        handle->currentFrequency,
+                                        SYS_getFrameRssi(handle),
+                                        handle->realTime) == LPCLIB_SUCCESS) {
+                                    /* Frame complete. Let scanner prepare for next frequency */
+                                    SCANNER_notifyValidFrame(scanner);
+                                }
+                            }
                         //     else if (sondeType == SONDE_MRZ) {
                         //         if (MRZ_processBlock(
                         //                 handle->mrz,

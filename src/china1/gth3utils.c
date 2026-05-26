@@ -6,15 +6,14 @@
 #include "lpclib.h"
 #include "gth3.h"
 #include "gth3private.h"
-
+#include "utils.h"
 
 
 /* Check CRC */
 _Bool _GTH3_checkCRC (uint8_t *buffer, int length, uint16_t receivedCRC)
 {
 #ifdef ARDUINO_ARCH_ESP32
-    return (receivedCRC == getCRC(buffer, length));
-#warning "CRC wrongly configred"
+    return (utilsGTH3_checkCRC(buffer, length, receivedCRC));
 #else
     CRC_Handle crc = LPCLIB_INVALID_HANDLE;
     CRC_Mode crcMode;

@@ -4,6 +4,8 @@
 #include <string.h>
 #include <stdio.h>
 
+#include "espPorting.h"
+
 #include "lpclib.h"
 #include "windsond.h"
 #include "windsondprivate.h"

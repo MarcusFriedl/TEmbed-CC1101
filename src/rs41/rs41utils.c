@@ -8,6 +8,7 @@
 #include "rs41private.h"
 #include "reedsolomon.h"
 #include "bridge.h"
+#include "utils.h"
 
 
 static const uint8_t bitreversal[256] = {
@@ -49,7 +50,7 @@ static const uint8_t whitening[64] = {
 _Bool _RS41_checkCRC (uint8_t *buffer, int length, uint16_t receivedCRC)
 {
 #ifdef ARDUINO_ARCH_ESP32
-    return (receivedCRC == getCRC(buffer, length));
+    return(utilsRS41_checkCRC(buffer, length, receivedCRC));
 #else
     CRC_Handle crc = LPCLIB_INVALID_HANDLE;
     CRC_Mode crcMode;
