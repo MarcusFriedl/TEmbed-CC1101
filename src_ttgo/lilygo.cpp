@@ -18,7 +18,9 @@
 SSD1306Wire* display = nullptr;
 static const char* TAG = "HP";
 int taskCalled_Cntr = 0;
-uint8_t PIN_DIO1 = 0;
+
+uint64_t rxedBits,pattern;
+uint8_t PIN_DIO1,dtstate;
 extern StreamBufferHandle_t xBitBuffer;
 
 BoardPins espBoard;
@@ -27,8 +29,14 @@ void handleConsole(const char *cmd);
 
 IRAM_ATTR void onDIO1Edge() {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-   // uint8_t bit = (GPIO.in1.val /*>> (PIN_DIO2 - 32)*/) & 0x01;
-    uint8_t bit = digitalRead(espBoard.lora_dio2);
+
+    // ULTRAQUICK REGISTER ACCESS FOR BOTH BOARDS
+    // GPIO 32 and 34 in register 'in1': subtract 32
+    // for TTGO (32) shift by 0, for Heltec (34) shift by 2.
+    uint8_t bit = (GPIO.in1.val >> (espBoard.lora_dio2 - 32)) & 0x01;
+    // info: for a bord with DIO2 < 32 the call would be:
+    // uint8_t bit = (GPIO.in.val >> espBoard.lora_dio2) & 0x01;
+
     xStreamBufferSendFromISR(xBitBuffer, &bit, 1, &xHigherPriorityTaskWoken);
     if (xHigherPriorityTaskWoken == pdTRUE) { portYIELD_FROM_ISR(); }
 }
@@ -320,6 +328,8 @@ void LilyGo::a100msTask()
    
             if(activeScreen == SCREEN_SCANNER)
                OLED_drawScreen(SCREEN_SCANNER,false);
+    uint64_t rxedTmp = rxedBits;
+    ESP_LOGE("HP", "rxed = 0x%llx, pattern = 0x%llx, dtstate = %d", rxedTmp, pattern, dtstate);
     }
 
    

@@ -45,6 +45,8 @@ struct _SyncDetectorContext {
 #define ipc_s2m ipc
 volatile IPC_S2M ipc_s2m[IPC_S2M_NUM_BUFFERS];
 
+extern uint64_t rxedBits,pattern;
+extern uint8_t dtstate;
 void PIN_INT3_IRQHandler2 (unsigned int bit)
 {
     SYNC_Handle handle = &syncContext;
@@ -57,6 +59,8 @@ void PIN_INT3_IRQHandler2 (unsigned int bit)
     if (handle->config /*&& GPIO_readBit(GPIO_RX_CLK)*/) {
         /* Read data bit */
    //     bit = digitalRead(DIO2_PIN); //GPIO_readBit(GPIO_RX_DATA);
+   dtstate= handle->state; 
+rxedBits = handle->rxShiftReg[1] ;
         switch (handle->state) {
             case SYNC_STATE_HUNT:
                 /* Take RX bit and put into 128-bit shift register */
@@ -74,6 +78,7 @@ void PIN_INT3_IRQHandler2 (unsigned int bit)
                         + __builtin_popcountll((handle->rxShiftReg[0] ^ handle->config->conf[i].pattern[0]) & handle->config->conf[i].patternMask[0])
                         + __builtin_popcountll((handle->rxShiftReg[1] ^ handle->config->conf[i].pattern[1]) & handle->config->conf[i].patternMask[1])
                         ;
+        pattern = handle->config->conf[i].pattern[0];
                     if (nDifferences <= handle->config->conf[i].nMaxDifference) {
                         /* SYNC! Start frame reception */
                         /* Find available buffer */
