@@ -2,9 +2,10 @@
 #define BLE_H
 
 #include <Arduino.h>
-#include <BLEUtils.h>
-#include <BLEDevice.h>
-#include <ble.h>
+// #include <BLEUtils.h>
+// #include <BLEDevice.h>
+// #include <ble.h>
+#include <NimBLEDevice.h>
 #include "lilygo.h"
 #include "bridge.h"
 
@@ -14,30 +15,37 @@
 #define UUID_VSP_CHAR_CTS "569a2002-b87f-490c-92cb-11ba5ea5167c"
 #define UUID_VSP_CHAR_RTS "569a2003-b87f-490c-92cb-11ba5ea5167c"
 
+#define SERVICE_UUID2     "569a3000-b87f-490c-92cb-11ba5ea5167c"
+#define UUID_VSP_CHAR_RX2 "569a3001-b87f-490c-92cb-11ba5ea5167c" /* Notify */
+#define UUID_VSP_CHAR_TX2 "569a3002-b87f-490c-92cb-11ba5ea5167c" /* Write */
+
 void BLE_setup(bool);
 void BLE_setMsgQueue(QueueHandle_t q);
 
-class MyCallbacks: public BLECharacteristicCallbacks 
+class MyCallbacks: public NimBLECharacteristicCallbacks 
 {
-//   void onRead  (BLECharacteristic *pCharacteristic) {  print("callback onRead");}  
-//   void onStatus(BLECharacteristic *pCharacteristic) {  print("callback onStatus");}  
-//   void onNotify(BLECharacteristic *pCharacteristic) {  print("callback onNotify");}  
-  void onWrite (BLECharacteristic *pCharacteristic); 
+  public:
+    void onWrite (NimBLECharacteristic *pCharacteristic); 
 };
 
-//Setup callbacks onConnect and onDisconnect
-class MyServerCallbacks: public BLEServerCallbacks {
+// class MyCallbacksApp2: public NimBLECharacteristicCallbacks 
+// {
+//   public:
+//     void onWrite (NimBLECharacteristic *pCharacteristic) override; 
+// };
 
-  void onConnect(BLEServer* pServer) {
+
+//Setup callbacks onConnect and onDisconnect
+class MyServerCallbacks: public NimBLEServerCallbacks {
+  
+  void onConnect(NimBLEServer* pServer, ble_gap_conn_desc* desc) {
      ttgo_setBtState(true);
-     //ESP_LOGE("HP","BT_STATE_CONNECT");
+     NimBLEDevice::startAdvertising();
   };
 
-  void onDisconnect(BLEServer* pServer) {
+  void onDisconnect(NimBLEServer* pServer, ble_gap_conn_desc* desc) {
     ttgo_setBtState(false);
-    //ESP_LOGE("HP","BT_STATE_DISCONNECT");
-    BLEDevice::stopAdvertising();
-    pServer->getAdvertising()->start();
+    NimBLEDevice::startAdvertising();
   }
 };
 

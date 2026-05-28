@@ -329,16 +329,16 @@ LPCLIB_Result M20_processBlock (
             /* Remember RX frequency (difference to nominal sonde frequency will be reported of frequency offset) */
             handle->rxFrequencyHz = rxFrequencyHz;
 
-if(1){//            if (handle->instance->logMode == M20_LOGMODE_RAW) {
-                _M20_sendRaw(handle->instance, (uint8_t *)&handle->packet, handle->packetLength);
-            }
-
             /* Convert big-endian fields to little-endian */
             _M20_fromBigEndian(&handle->packet);
-
+            
             /* Get an instance */
             _M20_processConfigBlock(&handle->packet, &handle->instance);
+
             if (handle->instance) {
+if(1){ //                 if (handle->instance->logMode == M20_LOGMODE_RAW) {
+                    _M20_sendRaw(handle->instance, (uint8_t *)&handle->packet, handle->packetLength);
+                }
                 handle->instance->rssi = rssi;
                 handle->instance->realTime = realTime;
                 handle->instance->rxFrequencyMHz = handle->rxFrequencyHz / 1e6f;
