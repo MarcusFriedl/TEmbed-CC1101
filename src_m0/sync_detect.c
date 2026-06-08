@@ -108,6 +108,9 @@ rxedBits = handle->rxShiftReg[1] ;
                             ipc_s2m[handle->activeBuffer].rxTime = os_time;
                             VITERBI_open(&handle->viterbi, 0x1D);
                         }
+                        else {
+                            ESP_LOGE("HP","SYNC_STATE_HUNT: No empty buffer!!!");
+                        }
                     }
                 }
                 break;

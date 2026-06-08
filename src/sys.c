@@ -639,8 +639,11 @@ static const SX1278_Config radioModeVaisala[] = {
     { .reg = 0x03, .value = 0x0B },       // RegBitrateLsb
     { .reg = 0x04, .value = 0x00 },       // RegFdevMsb -> 2.4 kHz
     { .reg = 0x05, .value = 0x27 },       // RegFdevLsb 
-    { .reg = 0x12, .value = 0b00001111 }, // RegRxBw  -> 10.4  kHz
-    { .reg = 0x13, .value = 0b00001110 }, // RegAfcBw -> 12.5 kHz   
+//    { .reg = 0x12, .value = 0b00001111 }, // RegRxBw  -> 10.4  kHz  ????? 2*3.1 ???
+    { .reg = 0x12, .value = 0b00010101 }, // RegRxBw  -> 10.4  kHz ( 2 * 5,2 kHz SSB) Der theoretische Idealwert
+//    { .reg = 0x12, .value = 0b00001101 }, // RegRxBw  -> 15.6 kHz (2 * 7,8 kHz SSB) sicherste Praxis-Empfehlung
+//    { .reg = 0x13, .value = 0b00001110 }, // RegAfcBw -> 12.5 kHz orig (2x12.5 ??)  
+    { .reg = 0x13, .value = 0b00001101 }, // RegAfcBw -> 12.6 kHz   (2 * 6.3)
     { .reg = 0x0D, .value = 0b11111110 }, // RegRxConfig -> AFC & AGC, gain by AGC
     { 0xFF, 0xFF } // Ende-Markierung
 };
@@ -676,7 +679,7 @@ static const SX1278_Config radioModeModem[] = {   //used for scanner init
     { .reg = 0x03, .value = 0x05 },       // RegBitrateLsb
     { .reg = 0x04, .value = 0x00 },       // RegFdevMsb -> 5 kHz
     { .reg = 0x05, .value = 0x52 },       // RegFdevLsb 
-    { .reg = 0x12, .value = 0b00010100 }, // RegRxBw  -> 20.8 kHz
+    { .reg = 0x12, .value = 0b00010101 }, // RegRxBw  -> 2*10.4 kHz
     { .reg = 0x13, .value = 0b00010010 }, // RegAfcBw -> 20 kHz   
     { .reg = 0x0D, .value = 0b11111110 }, // RegRxConfig -> AFC & AGC, gain by AGC
     { 0xFF, 0xFF } // Ende-Markierung
@@ -700,8 +703,8 @@ static const SX1278_Config radioModeWindsond[] = {
     { .reg = 0x03, .value = 0x15},        // RegBitrateLsb
     { .reg = 0x04, .value = 0x02 },       // RegFdevMsb -> 34 kHz
     { .reg = 0x05, .value = 0x2D },       // RegFdevLsb 
-    { .reg = 0x12, .value = 0x0A },       // RegRxBw  -> 83.3 kHz   
-    { .reg = 0x13, .value = 0x0A },       // RegAfcBw -> 83.3 kHz  
+    { .reg = 0x12, .value = 0x13 },       // RegRxBw  -> 2*41.7 kHz   
+    { .reg = 0x13, .value = 0x03 },       // RegAfcBw -> 2*62.5 kHz  
     { .reg = 0x0D, .value = 0b11111110 }, // RegRxConfig -> AFC & AGC, gain by AGC
     { 0xFF, 0xFF } // Ende-Markierung
 };
@@ -816,8 +819,8 @@ void MAILBOX_IRQHandler_SYS (LPC_MAILBOX_t* LPC_MAILBOX)
         LPC_MAILBOX->IRQ1CLR = requests;
     }
 
-    if (&Message) {
-         xQueueSend(sysContext.queue, &Message,0);  
+    if (pMessage) {
+         xQueueSend(sysContext.queue, pMessage,0);  
     //     osMailPut(sysContext.queue, pMessage);
     }
 }

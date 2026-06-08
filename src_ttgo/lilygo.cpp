@@ -26,6 +26,7 @@ extern StreamBufferHandle_t xBitBuffer;
 BoardPins espBoard;
 
 void handleConsole(const char *cmd);
+volatile uint8_t DRAM_ATTR isr_lora_dio2_pin = 32; // Default to TTGO DIO2 pin, will be updated in detectBoard()
 
 IRAM_ATTR void onDIO1Edge() {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
@@ -33,7 +34,7 @@ IRAM_ATTR void onDIO1Edge() {
     // ULTRAQUICK REGISTER ACCESS FOR BOTH BOARDS
     // GPIO 32 and 34 in register 'in1': subtract 32
     // for TTGO (32) shift by 0, for Heltec (34) shift by 2.
-    uint8_t bit = (GPIO.in1.val >> (espBoard.lora_dio2 - 32)) & 0x01;
+    uint8_t bit = (GPIO.in1.val >> (isr_lora_dio2_pin - 32)) & 0x01;
     // info: for a bord with DIO2 < 32 the call would be:
     // uint8_t bit = (GPIO.in.val >> espBoard.lora_dio2) & 0x01;
 
@@ -100,6 +101,7 @@ void LilyGo::detectBoard() {
         isBoardTTGO = true;
     }
     PIN_DIO1 = espBoard.lora_dio1;
+    isr_lora_dio2_pin = espBoard.lora_dio2;
 
     Serial.printf("Detected %s\n", espBoard.boardName);
 }
@@ -328,8 +330,8 @@ void LilyGo::a100msTask()
    
             if(activeScreen == SCREEN_SCANNER)
                OLED_drawScreen(SCREEN_SCANNER,false);
-    uint64_t rxedTmp = rxedBits;
-    ESP_LOGE("HP", "rxed = 0x%llx, pattern = 0x%llx, dtstate = %d", rxedTmp, pattern, dtstate);
+    // uint64_t rxedTmp = rxedBits;
+    // ESP_LOGE("HP", "rxed = 0x%llx, pattern = 0x%llx, dtstate = %d", rxedTmp, pattern, dtstate);
     }
 
    

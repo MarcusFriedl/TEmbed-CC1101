@@ -55,9 +55,9 @@ void setup() {
    SONDE_open(&sonde);
 
    xBitBuffer = xStreamBufferCreate(xStreamBufferSizeBytes, xTriggerLevel);
-   xTaskCreate(SYNCDET_thread, "SyncDet",  2000, (void *)sys,     40, &xTaskSyncDet);
-   xTaskCreate(SYS_thread,     "System",  50000, (void *)sys,     30, NULL);
-   xTaskCreate(SCANNER_thread, "Scanner", 20000, (void *)scanner, 20, &xTaskScanner);
+   xTaskCreate(SYNCDET_thread, "SyncDet",  2000, (void *)sys,     12, &xTaskSyncDet);
+   xTaskCreate(SYS_thread,     "System",  50000, (void *)sys,     8, NULL);
+   xTaskCreate(SCANNER_thread, "Scanner", 20000, (void *)scanner, 4, &xTaskScanner);
 
    attachInterrupt(PIN_DIO1, onDIO1Edge, RISING);
   }

@@ -150,9 +150,9 @@ LPCLIB_Result _RS41_processConfigBlock (
             }
         }
 
-        if(rawConfig->errorLog != 0) {
-            ESP_LOGE("RS41", "rawConfig->errorLog=%d", rawConfig->errorLog  );
-        }
+        // if(rawConfig->errorLog != 0) {
+        //     ESP_LOGE("RS41", "rawConfig->errorLog=%d", rawConfig->errorLog  );
+        // }
  
         if (_RS41_checkValidCalibration(instance, CALIB_FREQUENCY)) {
             instance->rxFrequencyMHz = 400.0f + (instance->params.frequency * 10) / 64000.0f;
