@@ -639,11 +639,8 @@ static const SX1278_Config radioModeVaisala[] = {
     { .reg = 0x03, .value = 0x0B },       // RegBitrateLsb
     { .reg = 0x04, .value = 0x00 },       // RegFdevMsb -> 2.4 kHz
     { .reg = 0x05, .value = 0x27 },       // RegFdevLsb 
-//    { .reg = 0x12, .value = 0b00001111 }, // RegRxBw  -> 10.4  kHz  ????? 2*3.1 ???
-    { .reg = 0x12, .value = 0b00010101 }, // RegRxBw  -> 10.4  kHz ( 2 * 5,2 kHz SSB) Der theoretische Idealwert
-//    { .reg = 0x12, .value = 0b00001101 }, // RegRxBw  -> 15.6 kHz (2 * 7,8 kHz SSB) sicherste Praxis-Empfehlung
-//    { .reg = 0x13, .value = 0b00001110 }, // RegAfcBw -> 12.5 kHz orig (2x12.5 ??)  
-    { .reg = 0x13, .value = 0b00001101 }, // RegAfcBw -> 12.6 kHz   (2 * 6.3)
+    { .reg = 0x12, .value = 0b00010101 }, // RegRxBw  -> 10.4  kHz ( 2 * 5,2 kHz SSB) 
+    { .reg = 0x13, .value = 0b00001101 }, // RegAfcBw -> 12.6 kHz   (2 * 6.3 kHz SSB)
     { .reg = 0x0D, .value = 0b11111110 }, // RegRxConfig -> AFC & AGC, gain by AGC
     { 0xFF, 0xFF } // Ende-Markierung
 };
@@ -677,10 +674,10 @@ static const SX1278_Config radioModeModem[] = {   //used for scanner init
     { .reg = 0x01, .value = 0b00000000 }, // RegOpMode -> FSK Mode sleep
     { .reg = 0x02, .value = 0x0D },       // RegBitrateMsb -> 9600 bps
     { .reg = 0x03, .value = 0x05 },       // RegBitrateLsb
-    { .reg = 0x04, .value = 0x00 },       // RegFdevMsb -> 5 kHz
-    { .reg = 0x05, .value = 0x52 },       // RegFdevLsb 
-    { .reg = 0x12, .value = 0b00010101 }, // RegRxBw  -> 2*10.4 kHz
-    { .reg = 0x13, .value = 0b00010010 }, // RegAfcBw -> 20 kHz   
+    { .reg = 0x04, .value = 0x00 },       // RegFdevMsb -> 2.5 kHz
+    { .reg = 0x05, .value = 0x27 },       // RegFdevLsb 
+    { .reg = 0x12, .value = 0b00010101 }, // RegRxBw  -> 2*10.4 kHz SSB
+    { .reg = 0x13, .value = 0b00001101 }, // RegAfcBw -> 2*12.5 kHz SSB
     { .reg = 0x0D, .value = 0b11111110 }, // RegRxConfig -> AFC & AGC, gain by AGC
     { 0xFF, 0xFF } // Ende-Markierung
 };
