@@ -79,8 +79,9 @@ static void screenSaverCallback(TimerHandle_t xTimer)    {
 }
 
 LilyGo::LilyGo() {
-    // Constructor implementation
+#ifndef TEMBED_CC1101
     pinMode(LED_BUILTIN, OUTPUT);
+#endif
 
     rssi = -128;
 }
@@ -549,11 +550,14 @@ void LilyGo::a100msTask()
     if(taskCalled_Cntr == 30)         // After showing startup screen for 3 seconds, switch to main screen
             OLED_drawScreen(SCREEN_SONDEDATA); 
 
-    if (taskCalled_Cntr % 100 == 0)   // Blink LED every 10 seconds to indicate the system is alive
-        digitalWrite(LED_BUILTIN, HIGH);
-    else if(taskCalled_Cntr % 100 == 1)
-        digitalWrite(LED_BUILTIN, LOW);
+    #ifndef TEMBED_CC1101
 
+if (taskCalled_Cntr % 100 == 0)
+    digitalWrite(LED_BUILTIN, HIGH);
+else if(taskCalled_Cntr % 100 == 1)
+    digitalWrite(LED_BUILTIN, LOW);
+
+#endif
 }
 
 void LilyGo::setDisplayData(double lat_in, double lon_in, double alt_in, float freq_in,char *id_in, float rssi_in, uint32_t frameCounter)
