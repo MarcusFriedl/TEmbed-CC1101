@@ -290,11 +290,100 @@ void LilyGo::SX1278_readRSSI(float* newLevel)
     *newLevel = -sx1278ReadRegister(0x11) / 2.0f; 
 }
 
-void LilyGo::SX1278_setBitRate(uint16_t bitrate) {
-    uint8_t value = (uint8_t)(32000000 / bitrate >> 8); // Assuming F_XOSC = 32 MHz
-    sx1278WriteRegister0(0x02, value);  // RegBitrateMsb
-    value = (uint8_t)(32000000 / bitrate & 0xFF);
-    sx1278WriteRegister0(0x03, value);  // RegBitrateLsb
+void LilyGo::SX1278_setup() {
+
+#ifdef TEMBED_CC1101
+
+    // Alle Teilnehmer des gemeinsamen SPI-Busses abwählen
+    pinMode(TEMBED_DISPLAY_CS, OUTPUT);
+    digitalWrite(TEMBED_DISPLAY_CS, HIGH);
+
+    pinMode(TEMBED_SD_CS, OUTPUT);
+    digitalWrite(TEMBED_SD_CS, HIGH);
+
+    pinMode(TEMBED_CC1101_CS, OUTPUT);
+    digitalWrite(TEMBED_CC1101_CS, HIGH);
+
+    // T-Embed Peripherie einschalten
+    pinMode(TEMBED_PWR_EN, OUTPUT);
+    digitalWrite(TEMBED_PWR_EN, HIGH);
+    delay(10);
+
+    // Antenne auf 387–464 MHz stellen
+    pinMode(TEMBED_RF_SW1, OUTPUT);
+    pinMode(TEMBED_RF_SW0, OUTPUT);
+    digitalWrite(TEMBED_RF_SW1, HIGH);
+    digitalWrite(TEMBED_RF_SW0, HIGH);
+
+    pinMode(TEMBED_CC1101_GDO0, INPUT);
+    pinMode(TEMBED_CC1101_GDO2, INPUT);
+
+    // Gemeinsamen SPI-Bus starten
+    SPI.begin(11, 10, 9);
+
+    // Timer wird vom bisherigen Ra-Code noch benötigt
+    screenSaverTimer = xTimerCreate(
+        "SCREENSAVER-Timer",
+        pdMS_TO_TICKS(60000),
+        pdFALSE,
+        (void *)NULL,
+        screenSaverCallback
+    );
+    xTimerStart(screenSaverTimer, 0);
+
+    // CC1101 zunächst für RS41 vorbereiten
+    int16_t state = cc1101.begin(
+        405.1,  // MHz
+        4.8,    // kbit/s
+        2.4,    // kHz Frequenzhub
+        58.0,   // kHz Empfangsbandbreite
+        10,     // dBm - für Empfang praktisch irrelevant
+        16
+    );
+
+    Serial.printf("CC1101 init state: %d\n", state);
+
+#else
+
+    pinMode(espBoard.lora_dio1, INPUT);
+    pinMode(espBoard.lora_dio2, INPUT);
+    pinMode(espBoard.lora_ss, OUTPUT);
+    pinMode(espBoard.lora_rst, OUTPUT);
+    digitalWrite(espBoard.lora_ss, HIGH);
+
+    SPI.begin(
+        espBoard.lora_sck,
+        espBoard.lora_miso,
+        espBoard.lora_mosi,
+        espBoard.lora_ss
+    );
+
+    digitalWrite(espBoard.lora_rst, LOW);
+    delay(100);
+    digitalWrite(espBoard.lora_rst, HIGH);
+    delay(100);
+
+    screenSaverTimer = xTimerCreate(
+        "SCREENSAVER-Timer",
+        pdMS_TO_TICKS(60000),
+        pdFALSE,
+        (void *)NULL,
+        screenSaverCallback
+    );
+    xTimerStart(screenSaverTimer, 0);
+
+    sx1278WriteRegister0(0x01, 0x01);
+    sx1278WriteRegister0(0x0C, 0b00100011);
+    sx1278WriteRegister0(0x0D, 0b11111110);
+    sx1278WriteRegister0(0x0E, 0b00000100);
+    sx1278WriteRegister0(0x14, 0x28);
+    sx1278WriteRegister0(0x1E, 0b00000001);
+    sx1278WriteRegister0(0x1F, 0xAA);
+    sx1278WriteRegister0(0x30, 0x00);
+    sx1278WriteRegister0(0x31, 0x00);
+    sx1278WriteRegister0(0x40, 0x00);
+
+#endif
 }
 
 float LilyGo::SX1278_setRadioFrequencyHz(uint32_t freqInHz, bool needRssi) {
