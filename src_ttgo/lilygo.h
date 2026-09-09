@@ -90,7 +90,7 @@ private:
 
     int guiCmdIdx = 0, 
         debug_age = 0, debug_RS41frameNr = 0, debug_RS41CrcCntr = 0, debug_RS41BlockCntr = 0;
-    bool BTisConnected, isCharging = false, screenIsOff = false, isBoardTTGO = false, isBoardHELTEC = false;
+    bool BTisConnected, isCharging = false, screenIsOff = false, isBoardTTGO = false, isBoardHELTEC = false, isBoardTEMBED = false;
     uint8_t activeScreen = SCREEN_STARTUP, detectorInEeprom;
     uint32_t latestDebugMsg,frequencyInEeprom,SerialNoEsp,versionBT = 0x05000000;
     double lat,lon,alt;
