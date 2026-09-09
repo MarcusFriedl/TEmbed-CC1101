@@ -846,13 +846,17 @@ void LilyGo::handleConsole(const char *cmd)
           break;
       }    
       case 'r':
-      {
-          for(int i=0;i<0x80;i++)
-          {
-             Serial.printf("Reg[0x%02x] = 0x%02x\n",i,sx1278ReadRegister(i));
-          }
-          break;
-      } 
+{
+#ifdef TEMBED_CC1101
+    Serial.println("CC1101: alter SX1278-Registerdump deaktiviert");
+#else
+    for(int i=0;i<0x80;i++)
+    {
+       Serial.printf("Reg[0x%02x] = 0x%02x\n",i,sx1278ReadRegister(i));
+    }
+#endif
+    break;
+}
       case 'x':
       {
           esp_restart();
