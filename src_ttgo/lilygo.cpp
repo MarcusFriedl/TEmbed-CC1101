@@ -31,15 +31,19 @@ volatile uint8_t DRAM_ATTR isr_lora_dio2_pin = 32; // Default to TTGO DIO2 pin, 
 IRAM_ATTR void onDIO1Edge() {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
-    // ULTRAQUICK REGISTER ACCESS FOR BOTH BOARDS
-    // GPIO 32 and 34 in register 'in1': subtract 32
-    // for TTGO (32) shift by 0, for Heltec (34) shift by 2.
-    uint8_t bit = (GPIO.in1.val >> (isr_lora_dio2_pin - 32)) & 0x01;
-    // info: for a bord with DIO2 < 32 the call would be:
-    // uint8_t bit = (GPIO.in.val >> espBoard.lora_dio2) & 0x01;
+    uint8_t bit;
+
+    if (isr_lora_dio2_pin >= 32) {
+        bit = (GPIO.in1.val >> (isr_lora_dio2_pin - 32)) & 0x01;
+    } else {
+        bit = (GPIO.in.val >> isr_lora_dio2_pin) & 0x01;
+    }
 
     xStreamBufferSendFromISR(xBitBuffer, &bit, 1, &xHigherPriorityTaskWoken);
-    if (xHigherPriorityTaskWoken == pdTRUE) { portYIELD_FROM_ISR(); }
+
+    if (xHigherPriorityTaskWoken == pdTRUE) {
+        portYIELD_FROM_ISR();
+    }
 }
 
 static void screenSaverCallback(TimerHandle_t xTimer)    {
