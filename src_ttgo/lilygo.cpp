@@ -286,8 +286,15 @@ void sx1278WriteRegister0(uint8_t reg, uint8_t value) {
 
 void LilyGo::SX1278_readRSSI(float* newLevel)
 {
-    // Convert raw RSSI value to dBm 
-    *newLevel = -sx1278ReadRegister(0x11) / 2.0f; 
+#ifdef TEMBED_CC1101
+
+    *newLevel = cc1101.getRSSI();
+
+#else
+
+    *newLevel = -sx1278ReadRegister(0x11) / 2.0f;
+
+#endif
 }
 
 void LilyGo::SX1278_setBitRate(uint16_t bitrate) {
