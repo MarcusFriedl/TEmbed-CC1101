@@ -74,8 +74,12 @@ IRAM_ATTR void onDIO1Edge() {
     }
 }
 
-static void screenSaverCallback(TimerHandle_t xTimer)    {
+static void screenSaverCallback(TimerHandle_t xTimer) {
+#ifdef TEMBED_CC1101
+    (void)xTimer;
+#else
     display->displayOff();
+#endif
 }
 
 LilyGo::LilyGo() {
@@ -96,7 +100,18 @@ void LilyGo::setup() {
     }else if(isBoardHELTEC) {
         pinMode(espBoard.oled_rst, OUTPUT);
     }
-    display = new SSD1306Wire(OLED_I2C_ADDRESS, espBoard.oled_sda, espBoard.oled_scl, GEOMETRY_128_64,I2C_TWO, 500000);
+    #ifndef TEMBED_CC1101
+    display = new SSD1306Wire(
+        OLED_I2C_ADDRESS,
+        espBoard.oled_sda,
+        espBoard.oled_scl,
+        GEOMETRY_128_64,
+        I2C_TWO,
+        500000
+    );
+#else
+    display = nullptr;
+#endif
     BTisConnected = false;
     BLE_setup(true);   
     esp_base_mac_addr_get(baseMac);   
@@ -182,7 +197,9 @@ void LilyGo::setMsgQueue(QueueHandle_t q) {
 
 void LilyGo::setBtState(bool state) {
     BTisConnected = state;
-
+#ifdef TEMBED_CC1101
+    return;
+#endif
     display->setColor(BTisConnected ? WHITE : BLACK);          
     switch(activeScreen)
     {
@@ -214,8 +231,13 @@ void LilyGo::OLED_setup(){
 
  void LilyGo::OLED_show(bool state){
     screenIsOff = !state;
+
+#ifdef TEMBED_CC1101
+    return;
+#else
     state ? display->displayOn() : display->displayOff();
- }
+#endif
+}
 
 
 uint32_t LilyGo::getSerialNo() { 
@@ -591,6 +613,12 @@ void LilyGo::setDisplayFreq(float freqHz)
 
 void LilyGo::OLED_drawScreen(uint8_t screen, bool disableScreenSaver)
 {
+  #ifdef TEMBED_CC1101
+    (void)screen;
+    (void)disableScreenSaver;
+    return;
+#endif
+    
     char s[40];
     if(disableScreenSaver){
         OLED_show(true);
@@ -723,6 +751,11 @@ void LilyGo::setDebugCrc(int eCrcCntr, int blockCntr)
 
 void LilyGo::OLED_updateVoltage(float vBatt_in)
 {
+    #ifdef TEMBED_CC1101
+    vBatt = vBatt_in;
+    vBattLast = vBatt_in;
+    return;
+#endif
     if(vBatt_in != vBattLast){
         vBatt     = vBatt_in;
         vBattLast = vBatt_in;
@@ -735,6 +768,9 @@ void LilyGo::OLED_updateVoltage(float vBatt_in)
 
 void LilyGo::OLED_drawBat()
 {
+    #ifdef TEMBED_CC1101
+    return;
+#endif
 //ESP_LOGE("HP","vBatt = %f", vBatt);
     //4.14 voll ohne laden, 3.0V leer, 3.9V ca. 50% Ladung
     //4.19 voll mit laden
@@ -760,6 +796,9 @@ void LilyGo::OLED_drawBat()
 
 void LilyGo::OLED_drawRSSI()
 {
+    #ifdef TEMBED_CC1101
+    return;
+#endif
 //   uint8_t n;
 //   if(rssi >= -65) n = 5;
 //   else if((rssi < -65) && (rssi >= -80)) n = 4;
