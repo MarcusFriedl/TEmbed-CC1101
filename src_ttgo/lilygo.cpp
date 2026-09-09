@@ -89,7 +89,7 @@ void LilyGo::detectBoard() {
 
         // CC1101:
         // SCK, MISO, MOSI, CS, RST, GDO0, CLOCK, DATA
-        11, 10, 9, 12, -1, 3, 3, 38,
+        11, 10, 9, 12, -1, 3, 38, 3,
 
         // T-Embed hat kein SSD1306-OLED.
         // Diese Werte werden im nächsten Schritt ersetzt.
