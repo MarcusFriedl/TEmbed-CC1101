@@ -22,11 +22,11 @@ jobs:
       - name: PlatformIO installieren
         run: pip install platformio
 
-      - name: Firmware bauen
-        run: pio run -e universal_lora32
+      - name: T-Embed Firmware bauen
+        run: pio run -e tembed_s3_test
 
       - name: Firmware bereitstellen
         uses: actions/upload-artifact@v4
         with:
-          name: Ra-ESP32-Test
-          path: .pio/build/universal_lora32/firmware.bin
+          name: Ra-TEmbed-S3-Test
+          path: .pio/build/tembed_s3_test/firmware.bin
