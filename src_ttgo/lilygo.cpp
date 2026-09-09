@@ -484,13 +484,26 @@ float LilyGo::SX1278_setRadioFrequencyHz(uint32_t freqInHz, bool needRssi) {
 
 
 void LilyGo::SX1278_ioctl(const SX1278_Config config[]) {
+
+#ifdef TEMBED_CC1101
+
+    // Die Config-Tabellen enthalten SX1278-Registerwerte.
+    // Diese dürfen niemals direkt in den CC1101 geschrieben werden.
+    // RS41 wird vorerst über RadioLib konfiguriert.
+    (void)config;
+
+#else
+
     for (int i = 0; config[i].reg != 0xFF; i++) {
         uint8_t regAddr = config[i].reg;
         uint8_t targetValue = config[i].value;
         sx1278WriteRegister0(regAddr, targetValue);
     }
-    delay(2); // Kurze Pause zur Stabilisierung (optional)
-}       
+
+    delay(2);
+
+#endif
+}
 
 void LilyGo::a100msTask()
 {
