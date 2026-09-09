@@ -103,10 +103,21 @@ void LilyGo::setup() {
     EEPROM_setup();
     SX1278_setup();
     OLED_setup();
+    #ifndef TEMBED_CC1101
+
     analogReadResolution(12);
     adc1_config_channel_atten(ADC1_CHANNEL_7, ADC_ATTEN_0db);
     adc1_config_width(ADC_WIDTH_12Bit);
     vBattOnStart = getBatVoltage();
+
+#else
+
+    // T-Embed nutzt einen eigenen Battery-Fuel-Gauge.
+    // Kommt später sauber über I2C.
+    vBatt = 0.0f;
+    vBattOnStart = 0.0f;
+
+#endif
     if(ESP_OK != esp_task_wdt_init(5,true)) {
         ESP_LOGE(TAG, "Failed to initialize task watchdog");
     }
@@ -213,6 +224,9 @@ uint32_t LilyGo::getSerialNo() {
 
 float LilyGo::getBatVoltage()
 {
+    #ifdef TEMBED_CC1101
+    return 0.0f;
+#endif
     float vBattOld = vBatt;
     // if(isBoardTTGO) {
     //     digitalWrite(14, HIGH);
