@@ -290,6 +290,23 @@ void LilyGo::SX1278_readRSSI(float* newLevel)
     *newLevel = -sx1278ReadRegister(0x11) / 2.0f; 
 }
 
+void LilyGo::SX1278_setBitRate(uint16_t bitrate) {
+
+#ifdef TEMBED_CC1101
+
+    int16_t state = cc1101.setBitRate((float)bitrate / 1000.0f);
+    Serial.printf("CC1101 bitrate: %u bps, state: %d\n", bitrate, state);
+
+#else
+
+    uint16_t divisor = 32000000UL / bitrate;
+
+    sx1278WriteRegister0(0x02, (uint8_t)(divisor >> 8));
+    sx1278WriteRegister0(0x03, (uint8_t)(divisor & 0xFF));
+
+#endif
+}
+
 void LilyGo::SX1278_setup() {
 
 #ifdef TEMBED_CC1101
