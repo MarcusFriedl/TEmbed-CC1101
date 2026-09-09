@@ -13,6 +13,34 @@
 #include "esp_adc_cal.h"
 #include "freertos/stream_buffer.h"
 
+#ifdef TEMBED_CC1101
+#include <RadioLib.h>
+
+// T-Embed CC1101
+static constexpr int TEMBED_CC1101_CS   = 12;
+static constexpr int TEMBED_CC1101_GDO0 = 3;
+static constexpr int TEMBED_CC1101_GDO2 = 38;
+
+static constexpr int TEMBED_PWR_EN = 15;
+static constexpr int TEMBED_RF_SW1 = 47;
+static constexpr int TEMBED_RF_SW0 = 48;
+
+// Display und SD teilen sich den SPI-Bus mit dem CC1101
+static constexpr int TEMBED_DISPLAY_CS = 41;
+static constexpr int TEMBED_SD_CS      = 13;
+
+static SPISettings cc1101SpiSettings(2000000, MSBFIRST, SPI_MODE0);
+
+static CC1101 cc1101 = new Module(
+    TEMBED_CC1101_CS,
+    TEMBED_CC1101_GDO0,
+    RADIOLIB_NC,
+    TEMBED_CC1101_GDO2,
+    SPI,
+    cc1101SpiSettings
+);
+#endif
+
 #define SX127x_FREQUENCY_STEP_SIZE   61.03515625 // in Hz (32 MHz / 2^19)
 
 SSD1306Wire* display = nullptr;
