@@ -1,0 +1,32 @@
+name: Build Ra-TEmbed
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Repository laden
+        uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: PlatformIO installieren
+        run: pip install platformio
+
+      - name: Firmware bauen
+        run: pio run -e universal_lora32
+
+      - name: Firmware bereitstellen
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ra-ESP32-Test
+          path: .pio/build/universal_lora32/firmware.bin
