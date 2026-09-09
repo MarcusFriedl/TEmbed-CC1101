@@ -415,36 +415,7 @@ float LilyGo::SX1278_setRadioFrequencyHz(uint32_t freqInHz, bool needRssi) {
 }
 
 
-void LilyGo::SX1278_setup() {
-    pinMode(espBoard.lora_dio1, INPUT);   
-    pinMode(espBoard.lora_dio2, INPUT);
-    pinMode(espBoard.lora_ss, OUTPUT);
-    pinMode(espBoard.lora_rst, OUTPUT);
 
-    digitalWrite(espBoard.lora_ss, HIGH); // Deselect the SX1278
-    // SPI setup
-    SPI.begin(espBoard.lora_sck, espBoard.lora_miso, espBoard.lora_mosi, espBoard.lora_ss);
-    // Reset the SX1278
-    digitalWrite(espBoard.lora_rst, LOW);
-    delay(100);
-    digitalWrite(espBoard.lora_rst, HIGH);
-    delay(100);
-
-    screenSaverTimer = xTimerCreate( "SCREENSAVER-Timer",pdMS_TO_TICKS(60000), pdFALSE, (void *)NULL, screenSaverCallback);
-    xTimerStart( screenSaverTimer, 0);
-
-    // SX1278 general initialization 
-    sx1278WriteRegister0(0x01, 0x01);       // FSK Standby Mode (LoRa aus, Mode = 001)
-    sx1278WriteRegister0(0x0C, 0b00100011); // G1 = highest gain
-    sx1278WriteRegister0(0x0D, 0b11111110); // RegRxConfig -> AFC & AGC, gain by AGC
-    sx1278WriteRegister0(0x0E, 0b00000100); // RSSI Glättung (32 samples)
-    sx1278WriteRegister0(0x14, 0x28);       // Bit-Synchronizer einschalten (optional für stabilere Daten)
-    sx1278WriteRegister0(0x1E, 0b00000001); // RegAfcFei-> AFC Autoclear an, um Frequenzdrift der Sonde zu folgen 
-    sx1278WriteRegister0(0x1F, 0xAA);       // Preamble Detektor On, 2 Bytes Sequenz
-    sx1278WriteRegister0(0x30, 0x00);       // 
-    sx1278WriteRegister0(0x31, 0x00);       // Continuous Mode aktivieren (PacketMode Bit 6 = 0)
-    sx1278WriteRegister0(0x40, 0x00);       // DIO2 Mapping auf "Data" setzen
-}
 
 void LilyGo::SX1278_ioctl(const SX1278_Config config[]) {
     for (int i = 0; config[i].reg != 0xFF; i++) {
