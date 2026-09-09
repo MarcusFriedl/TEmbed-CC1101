@@ -81,25 +81,51 @@ void LilyGo::setup() {
 }   
 
 void LilyGo::detectBoard() {
+
+#ifdef TEMBED_CC1101
+
+    espBoard = {
+        "LILYGO T-Embed CC1101",
+
+        // CC1101:
+        // SCK, MISO, MOSI, CS, RST, GDO0, CLOCK, DATA
+        11, 10, 9, 12, -1, 3, 3, 38,
+
+        // T-Embed hat kein SSD1306-OLED.
+        // Diese Werte werden im nächsten Schritt ersetzt.
+        8, 18, -1, -1
+    };
+
+    isBoardTEMBED = true;
+
+#else
+
     uint32_t flashSize = ESP.getFlashChipSize();
 
     if (flashSize >= 8 * 1024 * 1024) {
+
         espBoard = {
             "Heltec WiFi LoRa 32 V2",
-            5, 19, 27, 18, 14, 26, 35, 34, // LoRa (SCK, MISO, MOSI, SS, RST, DIO0, DIO1, DIO2)
-            4, 15, 16, 13                  // OLED (SDA, SCL, RST), BAT
+            5, 19, 27, 18, 14, 26, 35, 34,
+            4, 15, 16, 13
         };
+
         isBoardHELTEC = true;
     }
 
     if (flashSize == 4 * 1024 * 1024) {
+
         espBoard = {
             "TTGO LoRa32 V2.1 (1.6)",
-            5, 19, 27, 18, 23, 26, 33, 32, // LoRa (SCK, MISO, MOSI, SS, RST, DIO0, DIO1, DIO2)
-            21, 22, 16, 35                 // OLED (SDA, SCL, RST), BAT
+            5, 19, 27, 18, 23, 26, 33, 32,
+            21, 22, 16, 35
         };
+
         isBoardTTGO = true;
     }
+
+#endif
+
     PIN_DIO1 = espBoard.lora_dio1;
     isr_lora_dio2_pin = espBoard.lora_dio2;
 
