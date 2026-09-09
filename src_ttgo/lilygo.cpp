@@ -404,31 +404,73 @@ void LilyGo::SX1278_setup() {
 }
 
 float LilyGo::SX1278_setRadioFrequencyHz(uint32_t freqInHz, bool needRssi) {
+
+#ifdef TEMBED_CC1101
+
+    float rssi = 0.0f;
+    float freqMHz = (float)freqInHz / 1000000.0f;
+
+    int16_t state = cc1101.standby();
+
+    if (state != RADIOLIB_ERR_NONE) {
+        Serial.printf("CC1101 standby failed: %d\n", state);
+        return -128.0f;
+    }
+
+    state = cc1101.setFrequency(freqMHz);
+
+    if (state != RADIOLIB_ERR_NONE) {
+        Serial.printf("CC1101 setFrequency %.4f MHz failed: %d\n", freqMHz, state);
+        return -128.0f;
+    }
+
+    state = cc1101.receiveDirect();
+
+    if (state != RADIOLIB_ERR_NONE) {
+        Serial.printf("CC1101 receiveDirect failed: %d\n", state);
+        return -128.0f;
+    }
+
+    if (needRssi) {
+        delay(2);
+        rssi = cc1101.getRSSI();
+        updateTopSignals(freqInHz, rssi);
+    }
+
+    return rssi;
+
+#else
+
     float rssi = 0.0f;
     uint8_t spiBuff[32];
-    int32_t freq = (uint32_t)(freqInHz/SX127x_FREQUENCY_STEP_SIZE);
+    int32_t freq = (uint32_t)(freqInHz / SX127x_FREQUENCY_STEP_SIZE);
 
-    sx1278WriteRegister0(0x01, 0x01); // Standby mode, FSK
+    sx1278WriteRegister0(0x01, 0x01);
     delay(2);
-    spiBuff[0] =  0x80 | 0x06;  //Opcode for set RF Frequencty
+
+    spiBuff[0] = 0x80 | 0x06;
     spiBuff[3] = freq & 0xFF; freq >>= 8;
     spiBuff[2] = freq & 0xFF; freq >>= 8;
-    spiBuff[1] = freq & 0xFF; 
-    digitalWrite(espBoard.lora_ss, LOW);  //Enable radio chip-select
-    SPI.transfer(spiBuff, 4);
-    digitalWrite(espBoard.lora_ss, HIGH); //Disable radio chip-select  
-    sx1278WriteRegister0(0x01, 0x04);   // FSRX mode
-    delay(2);                           // TS_FS (standby->FSRX) = 60 us
-    sx1278WriteRegister0(0x01, 0x05);   // RX mode
-    delay(2);                           // TS_RE (FSRX   ->RX  ) < 1 ms
+    spiBuff[1] = freq & 0xFF;
 
-    if(needRssi) {
-        vTaskDelay(1/portTICK_PERIOD_MS); // Wait for RSSI sample
+    digitalWrite(espBoard.lora_ss, LOW);
+    SPI.transfer(spiBuff, 4);
+    digitalWrite(espBoard.lora_ss, HIGH);
+
+    sx1278WriteRegister0(0x01, 0x04);
+    delay(2);
+    sx1278WriteRegister0(0x01, 0x05);
+    delay(2);
+
+    if (needRssi) {
+        vTaskDelay(1 / portTICK_PERIOD_MS);
         rssi = -sx1278ReadRegister(0x11) / 2.0f;
         updateTopSignals(freqInHz, rssi);
     }
 
-    return rssi;    
+    return rssi;
+
+#endif
 }
 
 
