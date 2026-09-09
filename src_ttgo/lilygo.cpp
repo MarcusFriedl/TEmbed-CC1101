@@ -36,7 +36,7 @@ IRAM_ATTR void onDIO1Edge() {
     if (isr_lora_dio2_pin >= 32) {
         bit = (GPIO.in1.val >> (isr_lora_dio2_pin - 32)) & 0x01;
     } else {
-        bit = (GPIO.in.val >> isr_lora_dio2_pin) & 0x01;
+        bit = (GPIO.in >> isr_lora_dio2_pin) & 0x01;
     }
 
     xStreamBufferSendFromISR(xBitBuffer, &bit, 1, &xHigherPriorityTaskWoken);
