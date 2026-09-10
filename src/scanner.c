@@ -266,14 +266,8 @@ LPCLIB_Result SCANNER_open (SCANNER_Handle *pHandle)
     }
     *pHandle = handle;
 
-    #ifdef TEMBED_CC1101
-    // TEMPORÄR: 433-MHz-Test mit Funksteckdose
-    handle->spectrumStartFrequency = 433500000;
-    handle->spectrumEndFrequency   = 434300000;
-#else
-    handle->spectrumStartFrequency = 400000000;
-    handle->spectrumEndFrequency   = 406000000;
-#endif
+ handle->spectrumStartFrequency = 400000000;
+handle->spectrumEndFrequency   = 406000000;
 
     return LPCLIB_SUCCESS;
 }
