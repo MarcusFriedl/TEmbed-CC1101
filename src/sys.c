@@ -1099,7 +1099,9 @@ LPCLIB_Result SYS_enableDetector (SYS_Handle handle, float frequency, SONDE_Dete
                 ADF7021_setBitRate(radio, 4800);
                 ADF7021_ioctl(radio, radioModeVaisala);
 #else
-                SX1278_ioctl(radioModeVaisala);
+    SX1278_ioctl(radioModeVaisala);
+    SX1278_setBitRate(4800);
+#endif
 #endif
                 _SYS_setRadioFrequency(handle, frequency);
                 _SYS_reportRadioFrequency(handle);  /* Inform host */
