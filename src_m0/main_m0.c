@@ -30,7 +30,7 @@ void main2(void);
 
 
 static const SYNC_Config configVaisala = {
-    .nPatterns = 2,
+    .nPatterns = 3,
     .conf = {
         {
             .id = IPC_PACKET_TYPE_VAISALA_RS92,
@@ -52,7 +52,17 @@ static const SYNC_Config configVaisala = {
             .dataState = SYNC_STATE_DATA_RAW,
             .inverted = false,
         },
-    },
+    },        {
+            // RS41 mit umgekehrter FSK-Bitpolarität
+            .id = IPC_PACKET_TYPE_VAISALA_RS41,
+            .pattern     = {0x00000077BB96B7E0LL, 0},
+            .patternMask = {0x000000FFFFFFFFFFLL, 0},
+            .nMaxDifference = 3,
+            .frameLengthBits = 510 * 8,
+            .startOffset = 0,
+            .dataState = SYNC_STATE_DATA_RAW,
+            .inverted = true,
+        },
 };
 
 
