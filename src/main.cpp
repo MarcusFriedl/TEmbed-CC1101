@@ -6,10 +6,15 @@
 
 extern "C" {
     void PIN_INT3_IRQHandler2(unsigned int bit);
+    void MAILBOX_IRQHandler(uint32_t requests);
 }
 
 extern uint8_t PIN_DIO1;
+extern uint8_t dtstate;
 
+#ifdef TEMBED_CC1101
+volatile bool rs41SyncSelfTestPassed = false;
+#endif
 IRAM_ATTR void onDIO1Edge();
 
 SYS_Handle sys;
