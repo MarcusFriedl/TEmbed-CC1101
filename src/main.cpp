@@ -39,7 +39,7 @@ int i_cntr = 0,*hc=0;
 #ifdef TEMBED_CC1101
 void runRS41SyncSelfTest()
 {
-    const uint64_t rs41Sync = 0x884469481FULL;
+    const uint64_t rs41Sync = 0x77BB96B7E0ULL;
 
     // RS41/RS92-Syncdetektor aktivieren
     MAILBOX_IRQHandler(1u << 0);
