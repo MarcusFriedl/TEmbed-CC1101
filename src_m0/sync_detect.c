@@ -47,6 +47,9 @@ volatile IPC_S2M ipc_s2m[IPC_S2M_NUM_BUFFERS];
 
 extern uint64_t rxedBits,pattern;
 extern uint8_t dtstate;
+#ifdef TEMBED_CC1101
+volatile uint32_t rs41RealSyncHits = 0;
+#endif
 void PIN_INT3_IRQHandler2 (unsigned int bit)
 {
     SYNC_Handle handle = &syncContext;
@@ -80,6 +83,11 @@ rxedBits = handle->rxShiftReg[1] ;
                         ;
         pattern = handle->config->conf[i].pattern[0];
                     if (nDifferences <= handle->config->conf[i].nMaxDifference) {
+                        #ifdef TEMBED_CC1101
+    if (handle->config->conf[i].id == IPC_PACKET_TYPE_VAISALA_RS41) {
+        rs41RealSyncHits++;
+    }
+#endif
                         /* SYNC! Start frame reception */
                         /* Find available buffer */
                         for (j = 0; j < IPC_S2M_NUM_BUFFERS; j++) {
