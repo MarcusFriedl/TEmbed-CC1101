@@ -94,6 +94,10 @@ void LilyGo::setup() {
     uint8_t baseMac[6];
     
     detectBoard();
+    #ifdef TEMBED_CC1101
+    // Seitliche Taste: lang halten = Neustart zum Launcher
+    pinMode(6, INPUT_PULLUP);
+#endif
     if(isBoardTTGO) {
 //        pinMode(14, OUTPUT);
         pinMode(espBoard.bat_adc, INPUT);
@@ -545,7 +549,23 @@ void LilyGo::SX1278_ioctl(const SX1278_Config config[]) {
 void LilyGo::a100msTask()
 {
     taskCalled_Cntr++;
+#ifdef TEMBED_CC1101
+    static uint32_t launcherButtonSince = 0;
 
+    if (digitalRead(6) == LOW) {
+        if (launcherButtonSince == 0) {
+            launcherButtonSince = millis();
+        }
+        else if (millis() - launcherButtonSince >= 2500) {
+            Serial.println("Restarting to Launcher...");
+            delay(50);
+            esp_restart();
+        }
+    }
+    else {
+        launcherButtonSince = 0;
+    }
+#endif
     if (Serial.available()) {
         uint8_t key = Serial.read();
         if (key != 10) {
