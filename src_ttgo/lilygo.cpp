@@ -483,7 +483,7 @@ if (!needRssi &&
     freqInHz >= 399995000UL &&
     freqInHz <= 400005000UL) {
 
-    freqMHz = 433.920f;
+    freqMHz = 433.660f;
     Serial.println("TEST: 400.000 MHz -> real 433.920 MHz");
 }
     int16_t state = cc1101.standby();
