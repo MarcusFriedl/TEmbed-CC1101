@@ -476,7 +476,16 @@ float LilyGo::SX1278_setRadioFrequencyHz(uint32_t freqInHz, bool needRssi) {
 
     float rssi = 0.0f;
     float freqMHz = (float)freqInHz / 1000000.0f;
+// TEMPORÄRER Funksteckdosen-Test:
+// iRa erlaubt nur 400–406 MHz.
+// Manuell 400.000 MHz in iRa bedeutet auf dem T-Embed 433.920 MHz.
+if (!needRssi &&
+    freqInHz >= 399995000UL &&
+    freqInHz <= 400005000UL) {
 
+    freqMHz = 433.920f;
+    Serial.println("TEST: 400.000 MHz -> real 433.920 MHz");
+}
     int16_t state = cc1101.standby();
 
     if (state != RADIOLIB_ERR_NONE) {
