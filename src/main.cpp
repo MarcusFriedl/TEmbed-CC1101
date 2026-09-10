@@ -46,10 +46,48 @@ void SYNCDET_thread (void *param)
     }
 } 
 
+#ifdef TEMBED_CC1101
+void LAUNCHER_ESCAPE_thread(void *param)
+{
+    uint32_t pressedSince = 0;
+
+    pinMode(6, INPUT_PULLUP);
+
+    while (true) {
+        if (digitalRead(6) == LOW) {
+            if (pressedSince == 0) {
+                pressedSince = millis();
+            }
+            else if (millis() - pressedSince >= 2500) {
+                Serial.println("Emergency return to Launcher...");
+                esp_sleep_enable_timer_wakeup(1000000ULL);
+                delay(50);
+                esp_deep_sleep_start();
+            }
+        }
+        else {
+            pressedSince = 0;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+}
+#endif
+
 void setup() {
    Serial.begin(115200);
 
    ttgo_setup();
+    #ifdef TEMBED_CC1101
+    xTaskCreate(
+        LAUNCHER_ESCAPE_thread,
+        "LauncherEscape",
+        2048,
+        NULL,
+        20,
+        NULL
+    );
+#endif
    SYS_open(&sys);
    SCANNER_open(&scanner);
    SONDE_open(&sonde);
