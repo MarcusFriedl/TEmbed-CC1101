@@ -52,6 +52,7 @@ uint64_t rxedBits,pattern;
 
 #ifdef TEMBED_CC1101
 volatile uint32_t cc1101ClockEdges = 0;
+volatile uint32_t cc1101HighBits = 0;
 #endif
 
 uint8_t PIN_DIO1,dtstate;
@@ -74,6 +75,11 @@ IRAM_ATTR void onDIO1Edge() {
     } else {
         bit = (GPIO.in >> isr_lora_dio2_pin) & 0x01;
     }
+    #ifdef TEMBED_CC1101
+    if (bit) {
+        cc1101HighBits++;
+    }
+#endif
 
     xStreamBufferSendFromISR(xBitBuffer, &bit, 1, &xHigherPriorityTaskWoken);
 
@@ -261,15 +267,18 @@ float LilyGo::getBatVoltage()
 {
     #ifdef TEMBED_CC1101
     static uint32_t lastEdges = 0;
+    static uint32_t lastHigh = 0;
     static uint32_t lastMillis = 0;
-    static float clockKHz = 0.0f;
+    static float highPercent = 0.0f;
 
     uint32_t now = millis();
     uint32_t edges = cc1101ClockEdges;
+    uint32_t high = cc1101HighBits;
 
     if (lastMillis == 0) {
         lastMillis = now;
         lastEdges = edges;
+        lastHigh = high;
         return 0.0f;
     }
 
@@ -277,13 +286,18 @@ float LilyGo::getBatVoltage()
 
     if (elapsed >= 500) {
         uint32_t edgeDelta = edges - lastEdges;
-        clockKHz = (float)edgeDelta / (float)elapsed;
+        uint32_t highDelta = high - lastHigh;
+
+        if (edgeDelta > 0) {
+            highPercent = ((float)highDelta * 100.0f) / (float)edgeDelta;
+        }
 
         lastEdges = edges;
+        lastHigh = high;
         lastMillis = now;
     }
 
-    return clockKHz;
+    return highPercent;
 #endif
     float vBattOld = vBatt;
     // if(isBoardTTGO) {
