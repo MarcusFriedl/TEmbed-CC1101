@@ -125,7 +125,18 @@ static void _SCANNER_getSpectrum (void)
  
         /* Set radio frequency */
 #ifdef RX_SX1278
-        float denoised = SX1278_setRadioFrequencyHz(handle->spectrumFrequency + grid/2 - 100000, true);
+#ifdef TEMBED_CC1101
+        // CC1101: exakt auf die Mitte des angezeigten 10-kHz-Bins abstimmen
+        float denoised = SX1278_setRadioFrequencyHz(
+            handle->spectrumFrequency + grid/2,
+            true
+        );
+#else
+        float denoised = SX1278_setRadioFrequencyHz(
+            handle->spectrumFrequency + grid/2 - 100000,
+            true
+        );
+#endif
         // vTaskDelay(1/portTICK_PERIOD_MS); // Wait for RSSI sample
         // SYS_readRssi(sys, &denoised);     // 32 sample smoothing also done by RX
 
@@ -255,8 +266,14 @@ LPCLIB_Result SCANNER_open (SCANNER_Handle *pHandle)
     }
     *pHandle = handle;
 
+    #ifdef TEMBED_CC1101
+    // TEMPORÄR: 433-MHz-Test mit Funksteckdose
+    handle->spectrumStartFrequency = 433500000;
+    handle->spectrumEndFrequency   = 434300000;
+#else
     handle->spectrumStartFrequency = 400000000;
-    handle->spectrumEndFrequency = 406000000;
+    handle->spectrumEndFrequency   = 406000000;
+#endif
 
     return LPCLIB_SUCCESS;
 }
