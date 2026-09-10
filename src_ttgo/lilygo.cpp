@@ -9,6 +9,7 @@
 #include "espPorting.h"
 #include "esp_task_wdt.h"
 #include <esp_log.h>
+#include "esp_sleep.h"
 #include <driver/adc.h>
 #include "esp_adc_cal.h"
 #include "freertos/stream_buffer.h"
@@ -557,10 +558,14 @@ void LilyGo::a100msTask()
             launcherButtonSince = millis();
         }
         else if (millis() - launcherButtonSince >= 2500) {
-            Serial.println("Restarting to Launcher...");
-            delay(50);
-            esp_restart();
-        }
+    Serial.println("Returning to Launcher...");
+
+    // Kurzer Deep-Sleep erzeugt einen DEEPSLEEP_RESET.
+    // Launcher 2.9.1 fängt diesen Start wieder ab.
+    esp_sleep_enable_timer_wakeup(1000000ULL); // 1 Sekunde
+    delay(50);
+    esp_deep_sleep_start();
+}
     }
     else {
         launcherButtonSince = 0;
