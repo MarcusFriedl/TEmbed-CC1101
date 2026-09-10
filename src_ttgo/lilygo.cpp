@@ -49,6 +49,11 @@ static const char* TAG = "HP";
 int taskCalled_Cntr = 0;
 
 uint64_t rxedBits,pattern;
+
+#ifdef TEMBED_CC1101
+volatile uint32_t cc1101ClockEdges = 0;
+#endif
+
 uint8_t PIN_DIO1,dtstate;
 extern StreamBufferHandle_t xBitBuffer;
 
@@ -61,7 +66,9 @@ IRAM_ATTR void onDIO1Edge() {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
     uint8_t bit;
-
+#ifdef TEMBED_CC1101
+    cc1101ClockEdges++;
+#endif
     if (isr_lora_dio2_pin >= 32) {
         bit = (GPIO.in1.val >> (isr_lora_dio2_pin - 32)) & 0x01;
     } else {
@@ -253,7 +260,30 @@ uint32_t LilyGo::getSerialNo() {
 float LilyGo::getBatVoltage()
 {
     #ifdef TEMBED_CC1101
-    return 0.0f;
+    static uint32_t lastEdges = 0;
+    static uint32_t lastMillis = 0;
+    static float clockKHz = 0.0f;
+
+    uint32_t now = millis();
+    uint32_t edges = cc1101ClockEdges;
+
+    if (lastMillis == 0) {
+        lastMillis = now;
+        lastEdges = edges;
+        return 0.0f;
+    }
+
+    uint32_t elapsed = now - lastMillis;
+
+    if (elapsed >= 500) {
+        uint32_t edgeDelta = edges - lastEdges;
+        clockKHz = (float)edgeDelta / (float)elapsed;
+
+        lastEdges = edges;
+        lastMillis = now;
+    }
+
+    return clockKHz;
 #endif
     float vBattOld = vBatt;
     // if(isBoardTTGO) {
