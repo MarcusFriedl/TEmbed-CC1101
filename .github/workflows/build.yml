@@ -25,8 +25,11 @@ jobs:
       - name: T-Embed Firmware bauen
         run: pio run -e tembed_s3_test
 
+      - name: Firmware umbenennen
+        run: cp .pio/build/tembed_s3_test/firmware.bin Ra-TEmbed.bin
+
       - name: Firmware bereitstellen
         uses: actions/upload-artifact@v4
         with:
-          name: Ra-TEmbed-S3-Test
-          path: .pio/build/tembed_s3_test/firmware.bin
+          name: Ra-TEmbed
+          path: Ra-TEmbed.bin
