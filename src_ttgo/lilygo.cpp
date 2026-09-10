@@ -57,7 +57,9 @@ volatile uint32_t cc1101HighBits = 0;
 
 uint8_t PIN_DIO1,dtstate;
 extern StreamBufferHandle_t xBitBuffer;
-
+#ifdef TEMBED_CC1101
+extern volatile bool rs41SyncSelfTestPassed;
+#endif
 BoardPins espBoard;
 
 void handleConsole(const char *cmd);
@@ -266,38 +268,7 @@ uint32_t LilyGo::getSerialNo() {
 float LilyGo::getBatVoltage()
 {
     #ifdef TEMBED_CC1101
-    static uint32_t lastEdges = 0;
-    static uint32_t lastHigh = 0;
-    static uint32_t lastMillis = 0;
-    static float highPercent = 0.0f;
-
-    uint32_t now = millis();
-    uint32_t edges = cc1101ClockEdges;
-    uint32_t high = cc1101HighBits;
-
-    if (lastMillis == 0) {
-        lastMillis = now;
-        lastEdges = edges;
-        lastHigh = high;
-        return 0.0f;
-    }
-
-    uint32_t elapsed = now - lastMillis;
-
-    if (elapsed >= 500) {
-        uint32_t edgeDelta = edges - lastEdges;
-        uint32_t highDelta = high - lastHigh;
-
-        if (edgeDelta > 0) {
-            highPercent = ((float)highDelta * 100.0f) / (float)edgeDelta;
-        }
-
-        lastEdges = edges;
-        lastHigh = high;
-        lastMillis = now;
-    }
-
-    return highPercent;
+    return rs41SyncSelfTestPassed ? 88.88f : 11.11f;
 #endif
     float vBattOld = vBatt;
     // if(isBoardTTGO) {
