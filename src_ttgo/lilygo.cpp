@@ -51,8 +51,7 @@ int taskCalled_Cntr = 0;
 uint64_t rxedBits,pattern;
 
 #ifdef TEMBED_CC1101
-volatile uint32_t cc1101ClockEdges = 0;
-volatile uint32_t cc1101HighBits = 0;
+volatile uint32_t cc1101DroppedBits = 0;
 #endif
 
 uint8_t PIN_DIO1,dtstate;
@@ -72,22 +71,22 @@ IRAM_ATTR void onDIO1Edge() {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
     uint8_t bit;
-#ifdef TEMBED_CC1101
-    cc1101ClockEdges++;
-#endif
+
     if (isr_lora_dio2_pin >= 32) {
         bit = (GPIO.in1.val >> (isr_lora_dio2_pin - 32)) & 0x01;
     } else {
         bit = (GPIO.in >> isr_lora_dio2_pin) & 0x01;
     }
-    #ifdef TEMBED_CC1101
-    if (bit) {
-        cc1101HighBits++;
-    }
-#endif
+   
 
+    BaseType_t sent =
     xStreamBufferSendFromISR(xBitBuffer, &bit, 1, &xHigherPriorityTaskWoken);
 
+#ifdef TEMBED_CC1101
+if (sent != 1) {
+    cc1101DroppedBits++;
+}
+#endif
     if (xHigherPriorityTaskWoken == pdTRUE) {
         portYIELD_FROM_ISR();
     }
@@ -271,7 +270,7 @@ uint32_t LilyGo::getSerialNo() {
 float LilyGo::getBatVoltage()
 {
 #ifdef TEMBED_CC1101
-    return (float)rs41RealSyncHits;
+    return (float)cc1101DroppedBits;
 #endif
     float vBattOld = vBatt;
     // if(isBoardTTGO) {
