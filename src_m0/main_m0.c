@@ -52,7 +52,7 @@ static const SYNC_Config configVaisala = {
             .dataState = SYNC_STATE_DATA_RAW,
             .inverted = false,
         },
-    },        {
+           {
             // RS41 mit umgekehrter FSK-Bitpolarität
             .id = IPC_PACKET_TYPE_VAISALA_RS41,
             .pattern     = {0x00000077BB96B7E0LL, 0},
@@ -63,6 +63,7 @@ static const SYNC_Config configVaisala = {
             .dataState = SYNC_STATE_DATA_RAW,
             .inverted = true,
         },
+}, 
 };
 
 
