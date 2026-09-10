@@ -57,8 +57,11 @@ volatile uint32_t cc1101HighBits = 0;
 
 uint8_t PIN_DIO1,dtstate;
 extern StreamBufferHandle_t xBitBuffer;
+
 #ifdef TEMBED_CC1101
-extern volatile bool rs41SyncSelfTestPassed;
+extern "C" {
+    extern volatile uint32_t rs41RealSyncHits;
+}
 #endif
 BoardPins espBoard;
 
@@ -267,8 +270,8 @@ uint32_t LilyGo::getSerialNo() {
 
 float LilyGo::getBatVoltage()
 {
-    #ifdef TEMBED_CC1101
-    return rs41SyncSelfTestPassed ? 88.88f : 11.11f;
+#ifdef TEMBED_CC1101
+    return (float)rs41RealSyncHits;
 #endif
     float vBattOld = vBatt;
     // if(isBoardTTGO) {
