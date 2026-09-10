@@ -36,6 +36,36 @@ int i_cntr = 0,*hc=0;
 //     if (xHigherPriorityTaskWoken == pdTRUE) { portYIELD_FROM_ISR(); }
 // }
 
+#ifdef TEMBED_CC1101
+void runRS41SyncSelfTest()
+{
+    const uint64_t rs41Sync = 0x884469481FULL;
+
+    // RS41/RS92-Syncdetektor aktivieren
+    MAILBOX_IRQHandler(1u << 0);
+
+    // 40-Bit-RS41-Syncwort MSB zuerst einspeisen
+    for (int bit = 39; bit >= 0; bit--) {
+        PIN_INT3_IRQHandler2((rs41Sync >> bit) & 0x01);
+    }
+
+    // Ein weiteres Bit, damit wir den neuen Zustand sehen
+    PIN_INT3_IRQHandler2(0);
+
+    // DATA_RAW hat im bestehenden Decoder den Wert 1
+    rs41SyncSelfTestPassed = (dtstate == 1);
+
+    Serial.printf(
+        "RS41 sync self-test: %s\n",
+        rs41SyncSelfTestPassed ? "PASS" : "FAIL"
+    );
+
+    // Detektor anschließend sauber zurücksetzen
+    MAILBOX_IRQHandler(1u << 30);
+    MAILBOX_IRQHandler(1u << 31);
+}
+#endif
+
 void SYNCDET_thread (void *param)
 { 
     uint8_t receivedBit;
@@ -94,6 +124,9 @@ void setup() {
     );
 #endif
    SYS_open(&sys);
+    #ifdef TEMBED_CC1101
+    runRS41SyncSelfTest();
+#endif
    SCANNER_open(&scanner);
    SONDE_open(&sonde);
 
