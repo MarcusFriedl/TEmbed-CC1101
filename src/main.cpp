@@ -7,6 +7,9 @@
 extern "C" {
     void PIN_INT3_IRQHandler2(unsigned int bit);
     void MAILBOX_IRQHandler(uint32_t requests);
+#ifdef TEMBED_CC1101
+    void TEMBED_displaySetup();
+#endif
 }
 
 extern uint8_t PIN_DIO1;
@@ -81,6 +84,12 @@ void setup() {
    Serial.begin(115200);
 
    ttgo_setup();
+#ifdef TEMBED_CC1101
+   // TFT and CC1101 share the same hardware SPI pins. Draw the static startup
+   // screen before scanner/decoder tasks are started, so this first test has no
+   // concurrent SPI access at all.
+   TEMBED_displaySetup();
+#endif
     #ifdef TEMBED_CC1101
     xTaskCreate(
         LAUNCHER_ESCAPE_thread,
@@ -110,5 +119,4 @@ void loop()
   vTaskDelay(100/portTICK_PERIOD_MS);
   ttgo_100msTask();
 }
-
 
