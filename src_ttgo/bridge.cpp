@@ -6,6 +6,15 @@
 #include "CRC.h"
 //#include <string>
 
+#ifdef TEMBED_CC1101
+extern "C" {
+    void TEMBED_displaySetBtState(bool connected);
+    void TEMBED_displaySetFrequencyHz(uint32_t freqHz);
+    void TEMBED_displaySetRssi(float rssi);
+    void TEMBED_displaySetScanner(bool active);
+}
+#endif
+
 extern BLECharacteristic *pRxCharacteristic;
 float freq,rssi;
 double lat, lon, alt;
@@ -20,6 +29,10 @@ extern "C" {
 
     void ttgo_setup() {
         myLilyGoBoard.setup();
+#ifdef TEMBED_CC1101
+        // Prime the live TFT state before TEMBED_displaySetup() draws it.
+        TEMBED_displaySetFrequencyHz(myLilyGoBoard.EEPROM_getFrequency());
+#endif
     };
 
     void ttgo_100msTask(){
@@ -28,6 +41,9 @@ extern "C" {
 
     void ttgo_setBtState(bool state) {
         myLilyGoBoard.setBtState(state);
+#ifdef TEMBED_CC1101
+        TEMBED_displaySetBtState(state);
+#endif
     };
 
     uint32_t ttgo_getSerialNo() {
@@ -41,6 +57,14 @@ extern "C" {
     void ttgo_setDisplayData(double lat, double lon, double alt, float freq, char *id, float rssi, uint32_t frameCounter)
     {
         myLilyGoBoard.setDisplayData(lat, lon, alt, freq, id, rssi, frameCounter);
+#ifdef TEMBED_CC1101
+        // The legacy display path passes sonde frequency in MHz here.
+        uint32_t freqHz = (freq > 1000000.0f)
+            ? (uint32_t)freq
+            : (uint32_t)(freq * 1000000.0f + 0.5f);
+        TEMBED_displaySetFrequencyHz(freqHz);
+        TEMBED_displaySetRssi(rssi);
+#endif
     };
 
     void ttgo_toggleDebugScreen() {
@@ -49,6 +73,9 @@ extern "C" {
 
     void ttgo_toggleScannerScreen(int enable) {
         myLilyGoBoard.toggleScannerScreen(enable);
+#ifdef TEMBED_CC1101
+        TEMBED_displaySetScanner(enable == 2);
+#endif
     };
 
     void ttgo_debug(int eCrcCntr, int blockCntr)
@@ -59,6 +86,9 @@ extern "C" {
     void ttgo_setDisplayFreq(float freqHz)
     {
         myLilyGoBoard.setDisplayFreq(freqHz);
+#ifdef TEMBED_CC1101
+        TEMBED_displaySetFrequencyHz((uint32_t)freqHz);
+#endif
     };
 
     void ttgo_sendBtMessage( char* msg)
@@ -100,12 +130,25 @@ extern "C" {
 
     float SX1278_setRadioFrequencyHz(uint32_t freqHz, bool readRssi)
     {
-        return myLilyGoBoard.SX1278_setRadioFrequencyHz(freqHz, readRssi);
+        float level = myLilyGoBoard.SX1278_setRadioFrequencyHz(freqHz, readRssi);
+#ifdef TEMBED_CC1101
+        // Scanner bins use readRssi=true. Do not make the TFT chase all 600
+        // scan frequencies; only normal receive tuning updates the live QRG.
+        if (!readRssi) {
+            TEMBED_displaySetFrequencyHz(freqHz);
+        }
+#endif
+        return level;
     };
 
     void SX1278_readRSSI(float* newLevel)
     {
         myLilyGoBoard.SX1278_readRSSI(newLevel);
+#ifdef TEMBED_CC1101
+        if (newLevel != nullptr) {
+            TEMBED_displaySetRssi(*newLevel);
+        }
+#endif
     };
 
     void ttgo_writeFrequency2Eeprom(uint32_t frequency)
