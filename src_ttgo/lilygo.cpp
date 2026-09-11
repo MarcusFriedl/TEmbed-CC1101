@@ -556,7 +556,7 @@ float LilyGo::SX1278_setRadioFrequencyHz(uint32_t freqInHz, bool needRssi) {
     }
 
     if (needRssi) {
-        delay(2);
+        delay(1);
         rssi = cc1101.getRSSI();
         updateTopSignals(freqInHz, rssi);
     }
