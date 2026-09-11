@@ -5,10 +5,13 @@
 
 // Fast spectrum-scan path for the T-Embed CC1101.
 // The normal decoder path continues to use RadioLib in lilygo.cpp.
-// For a spectrum bin we only need: IDLE -> frequency registers -> RX -> RSSI.
+// For a spectrum bin we only need: IDLE -> frequency registers -> RX.
+// RSSI itself is deliberately read through RadioLib again, so we use the
+// already proven CC1101 status-register handling from the normal receiver.
 
 extern uint8_t PIN_DIO1;
 void onDIO1Edge();
+extern "C" float TEMBED_CC1101_readRadioLibRssi();
 
 namespace {
 
@@ -16,11 +19,9 @@ static constexpr int CC1101_CS   = 12;
 static constexpr int CC1101_MISO = 10;
 
 static constexpr uint8_t CC1101_REG_FREQ2 = 0x0D;
-static constexpr uint8_t CC1101_REG_RSSI  = 0x34;
 static constexpr uint8_t CC1101_CMD_SRX    = 0x34;
 static constexpr uint8_t CC1101_CMD_SIDLE  = 0x36;
 static constexpr uint8_t CC1101_WRITE_BURST = 0x40;
-static constexpr uint8_t CC1101_READ_BURST  = 0xC0;
 
 static SPISettings scanSpiSettings(2000000, MSBFIRST, SPI_MODE0);
 static bool fastScanActive = false;
@@ -77,29 +78,6 @@ static bool writeFrequencyRegisters(uint32_t freqHz)
     return true;
 }
 
-static bool readRssiRegister(uint8_t *rawRssi)
-{
-    if (!rawRssi || !selectCc1101()) {
-        return false;
-    }
-
-    // Status registers (0x30..0x3D) require READ_BURST on CC1101.
-    SPI.transfer(CC1101_REG_RSSI | CC1101_READ_BURST);
-    *rawRssi = SPI.transfer(0x00);
-    deselectCc1101();
-
-    return true;
-}
-
-static float rawRssiToDbm(uint8_t rawRssi)
-{
-    const int16_t signedRssi = (rawRssi >= 128)
-        ? (int16_t)rawRssi - 256
-        : (int16_t)rawRssi;
-
-    return ((float)signedRssi / 2.0f) - 74.0f;
-}
-
 } // namespace
 
 extern "C" void TEMBED_CC1101_fastScanEnd()
@@ -127,7 +105,7 @@ extern "C" float TEMBED_CC1101_fastScanRssi(uint32_t freqHz)
 
     SPI.beginTransaction(scanSpiSettings);
 
-    // This is deliberately much smaller than RadioLib's full per-bin path:
+    // Deliberately much smaller than RadioLib's old per-bin path:
     // no standby polling, no repeated Direct-Mode register setup, no PA update.
     ok = sendStrobe(CC1101_CMD_SIDLE);
     if (ok) {
@@ -143,20 +121,13 @@ extern "C" float TEMBED_CC1101_fastScanRssi(uint32_t freqHz)
         return -128.0f;
     }
 
-    // Keep the same settling time as the current scanner path (delay(1)), but
-    // without re-running the whole Direct-Mode setup for every 10-kHz bin.
-    delayMicroseconds(1000);
+    // Allow AGC/RSSI to settle, while retaining the fast sweep.
+    delayMicroseconds(1500);
 
-    uint8_t rawRssi = 0;
-    SPI.beginTransaction(scanSpiSettings);
-    ok = readRssiRegister(&rawRssi);
-    SPI.endTransaction();
-
-    if (!ok) {
-        return -128.0f;
-    }
-
-    return rawRssiToDbm(rawRssi);
+    // Important: Do not duplicate CC1101 RSSI register handling here.
+    // RadioLib already reads and converts the live RSSI register correctly in
+    // Direct Mode. This also keeps scanner and normal S-meter calibration equal.
+    return TEMBED_CC1101_readRadioLibRssi();
 }
 
 #endif // TEMBED_CC1101
