@@ -77,6 +77,24 @@ extern "C" {
 
     void ttgo_sendBtMessage( char* msg)
     {
+#ifdef TEMBED_CC1101
+        // iRa 3.5.1 interprets the scanner's historic empty RSSI payload
+        // ("#3,3,,...") as an invalid/high value. Replace only that one
+        // message with an explicit minimum RSSI and a freshly calculated
+        // protocol checksum.
+        char scannerRssiMsg[32];
+        if (strncmp(msg, "#3,3,,", 6) == 0) {
+            const char *body = "#3,3,-140.0";
+            int checksum = 0;
+            for (const char *p = body; *p; ++p) {
+                checksum += *p;
+            }
+            checksum += ',';
+            snprintf(scannerRssiMsg, sizeof(scannerRssiMsg), "%s,%d\r", body, checksum % 100);
+            msg = scannerRssiMsg;
+        }
+#endif
+
        //myLilyGoBoard.getInfosFromMsg(msg);
         if(strncmp(msg,"#3,3",4) != 0)
         {
