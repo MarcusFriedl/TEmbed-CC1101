@@ -19,6 +19,15 @@ char id[10],type[10];
 LilyGo myLilyGoBoard;
 extern "C" {
 
+#ifdef TEMBED_CC1101
+    float TEMBED_CC1101_readRadioLibRssi()
+    {
+        float level = -128.0f;
+        myLilyGoBoard.SX1278_readRSSI(&level);
+        return level;
+    }
+#endif
+
     void ttgo_setMsgQueue(QueueHandle_t queue) {
        myLilyGoBoard.setMsgQueue(queue);
     }; 
