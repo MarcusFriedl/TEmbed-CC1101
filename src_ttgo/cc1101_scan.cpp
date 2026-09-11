@@ -15,8 +15,7 @@ extern "C" float TEMBED_CC1101_readRadioLibRssi();
 
 namespace {
 
-static constexpr int CC1101_CS   = 12;
-static constexpr int CC1101_MISO = 10;
+static constexpr int CC1101_CS = 12;
 
 static constexpr uint8_t CC1101_REG_FREQ2 = 0x0D;
 static constexpr uint8_t CC1101_CMD_SRX    = 0x34;
@@ -26,56 +25,40 @@ static constexpr uint8_t CC1101_WRITE_BURST = 0x40;
 static SPISettings scanSpiSettings(2000000, MSBFIRST, SPI_MODE0);
 static bool fastScanActive = false;
 
-static bool selectCc1101()
+// The CC1101 is already awake for the whole spectrum scan.  The previous
+// version polled SO/MISO with digitalRead() after every CS assertion.  On the
+// ESP32-S3 SPI matrix that check proved unreliable and caused every bin to
+// fall back to the -128 dBm error value.  A short CS setup time is sufficient
+// here because we never put the radio into SLEEP/POWER-DOWN during scanning.
+static inline void selectCc1101()
 {
     digitalWrite(CC1101_CS, LOW);
-
-    // SO/MISO stays high until the CC1101 is ready for SPI access.
-    // In normal operation this is practically immediate, but keep a short
-    // timeout so a radio problem cannot stall the scanner forever.
-    uint32_t started = micros();
-    while (digitalRead(CC1101_MISO) == HIGH) {
-        if ((uint32_t)(micros() - started) > 1000U) {
-            digitalWrite(CC1101_CS, HIGH);
-            return false;
-        }
-    }
-
-    return true;
+    delayMicroseconds(2);
 }
 
-static void deselectCc1101()
+static inline void deselectCc1101()
 {
     digitalWrite(CC1101_CS, HIGH);
 }
 
-static bool sendStrobe(uint8_t command)
+static void sendStrobe(uint8_t command)
 {
-    if (!selectCc1101()) {
-        return false;
-    }
-
+    selectCc1101();
     SPI.transfer(command);
     deselectCc1101();
-    return true;
 }
 
-static bool writeFrequencyRegisters(uint32_t freqHz)
+static void writeFrequencyRegisters(uint32_t freqHz)
 {
     // CC1101: FREQ = f_carrier * 2^16 / f_xosc, f_xosc = 26 MHz.
     const uint32_t frf = (uint32_t)(((uint64_t)freqHz << 16) / 26000000ULL);
 
-    if (!selectCc1101()) {
-        return false;
-    }
-
+    selectCc1101();
     SPI.transfer(CC1101_REG_FREQ2 | CC1101_WRITE_BURST);
     SPI.transfer((uint8_t)((frf >> 16) & 0xFF));
     SPI.transfer((uint8_t)((frf >> 8) & 0xFF));
     SPI.transfer((uint8_t)(frf & 0xFF));
     deselectCc1101();
-
-    return true;
 }
 
 } // namespace
@@ -101,32 +84,24 @@ extern "C" float TEMBED_CC1101_fastScanRssi(uint32_t freqHz)
         fastScanActive = true;
     }
 
-    bool ok;
-
     SPI.beginTransaction(scanSpiSettings);
 
-    // Deliberately much smaller than RadioLib's old per-bin path:
-    // no standby polling, no repeated Direct-Mode register setup, no PA update.
-    ok = sendStrobe(CC1101_CMD_SIDLE);
-    if (ok) {
-        ok = writeFrequencyRegisters(freqHz);
-    }
-    if (ok) {
-        ok = sendStrobe(CC1101_CMD_SRX);
-    }
+    // Leave RX before changing FREQx.  Unlike the old RadioLib standby() call
+    // this is deliberately non-blocking; a small fixed settling time is enough
+    // for the already-running CC1101 and avoids hundreds of MARCSTATE polls.
+    sendStrobe(CC1101_CMD_SIDLE);
+    delayMicroseconds(40);
+
+    writeFrequencyRegisters(freqHz);
+    sendStrobe(CC1101_CMD_SRX);
 
     SPI.endTransaction();
 
-    if (!ok) {
-        return -128.0f;
-    }
+    // RSSI/AGC needs a little time after the new RX frequency is active.
+    // 2 ms is still fast enough for the 10-kHz sweep but gives the CC1101
+    // enough time for a meaningful live RSSI sample.
+    delayMicroseconds(2000);
 
-    // Allow AGC/RSSI to settle, while retaining the fast sweep.
-    delayMicroseconds(1500);
-
-    // Important: Do not duplicate CC1101 RSSI register handling here.
-    // RadioLib already reads and converts the live RSSI register correctly in
-    // Direct Mode. This also keeps scanner and normal S-meter calibration equal.
     return TEMBED_CC1101_readRadioLibRssi();
 }
 
