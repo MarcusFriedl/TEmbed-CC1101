@@ -17,9 +17,6 @@
 #ifdef TEMBED_CC1101
 #include <RadioLib.h>
 
-#include <Adafruit_GFX.h>
-#include <Adafruit_ST7789.h>
-
 // T-Embed CC1101
 static constexpr int TEMBED_CC1101_CS   = 12;
 static constexpr int TEMBED_CC1101_GDO0 = 3;
@@ -32,18 +29,7 @@ static constexpr int TEMBED_RF_SW0 = 48;
 // Display und SD teilen sich den SPI-Bus mit dem CC1101
 static constexpr int TEMBED_DISPLAY_CS = 41;
 static constexpr int TEMBED_SD_CS      = 13;
-static constexpr int TEMBED_TFT_DC = 16;
-static constexpr int TEMBED_TFT_BL = 21;
 
-// Software-SPI: dadurch lassen wir den funktionierenden
-// CC1101-Hardware-SPI-Bus in Ruhe.
-static Adafruit_ST7789 tembedTft(
-    TEMBED_DISPLAY_CS,
-    TEMBED_TFT_DC,
-    9,      // MOSI
-    11,     // SCK
-    -1      // kein eigener Reset-Pin
-);
 static SPISettings cc1101SpiSettings(2000000, MSBFIRST, SPI_MODE0);
 
 static CC1101 cc1101 = new Module(
@@ -261,52 +247,8 @@ void LilyGo::setBtState(bool state) {
 }
 
 void LilyGo::OLED_setup(){
-
-#ifdef TEMBED_CC1101
-
-    // Hintergrundbeleuchtung einschalten
-    pinMode(TEMBED_TFT_BL, OUTPUT);
-    digitalWrite(TEMBED_TFT_BL, HIGH);
-
-    // Die anderen Geräte auf dem gemeinsamen Bus abwählen
-    digitalWrite(TEMBED_CC1101_CS, HIGH);
-    digitalWrite(TEMBED_SD_CS, HIGH);
-
-    // T-Embed Display starten
-    tembedTft.init(170, 320);
-    tembedTft.setRotation(3);
-    tembedTft.fillScreen(ST77XX_BLACK);
-    tembedTft.setTextWrap(false);
-
-    // Überschrift
-    tembedTft.setTextColor(ST77XX_CYAN);
-    tembedTft.setTextSize(3);
-    tembedTft.setCursor(12, 12);
-    tembedTft.print("Ra-TEmbed");
-
-    // Status
-    tembedTft.setTextColor(ST77XX_GREEN);
-    tembedTft.setTextSize(2);
-    tembedTft.setCursor(12, 55);
-    tembedTft.print("CC1101 OK");
-
-    tembedTft.setTextColor(ST77XX_WHITE);
-    tembedTft.setCursor(12, 85);
-    tembedTft.printf("%.3f MHz", freqMhz);
-
-    tembedTft.setCursor(12, 115);
-    tembedTft.print("RS41 / RS92");
-
-    tembedTft.setTextColor(ST77XX_YELLOW);
-    tembedTft.setCursor(12, 145);
-    tembedTft.print("iRa: waiting");
-
-#else
-
-    OLED_drawScreen(SCREEN_STARTUP);
-
-#endif
-}
+    OLED_drawScreen(SCREEN_STARTUP); 
+ }
 
 
  void LilyGo::OLED_show(bool state){
@@ -556,7 +498,7 @@ float LilyGo::SX1278_setRadioFrequencyHz(uint32_t freqInHz, bool needRssi) {
     }
 
     if (needRssi) {
-        delay(1);
+        delay(2);
         rssi = cc1101.getRSSI();
         updateTopSignals(freqInHz, rssi);
     }

@@ -6,11 +6,6 @@
 #include "CRC.h"
 //#include <string>
 
-#ifdef TEMBED_CC1101
-extern "C" float TEMBED_CC1101_fastScanRssi(uint32_t freqHz);
-extern "C" void TEMBED_CC1101_fastScanEnd();
-#endif
-
 extern BLECharacteristic *pRxCharacteristic;
 float freq,rssi;
 double lat, lon, alt;
@@ -18,15 +13,6 @@ char id[10],type[10];
 
 LilyGo myLilyGoBoard;
 extern "C" {
-
-#ifdef TEMBED_CC1101
-    float TEMBED_CC1101_readRadioLibRssi()
-    {
-        float level = -128.0f;
-        myLilyGoBoard.SX1278_readRSSI(&level);
-        return level;
-    }
-#endif
 
     void ttgo_setMsgQueue(QueueHandle_t queue) {
        myLilyGoBoard.setMsgQueue(queue);
@@ -68,7 +54,7 @@ extern "C" {
     void ttgo_debug(int eCrcCntr, int blockCntr)
     {
         myLilyGoBoard.setDebugCrc(eCrcCntr, blockCntr);
-    };
+    }
 
     void ttgo_setDisplayFreq(float freqHz)
     {
@@ -77,24 +63,6 @@ extern "C" {
 
     void ttgo_sendBtMessage( char* msg)
     {
-#ifdef TEMBED_CC1101
-        // iRa 3.5.1 interprets the scanner's historic empty RSSI payload
-        // ("#3,3,,...") as an invalid/high value. Replace only that one
-        // message with an explicit minimum RSSI and a freshly calculated
-        // protocol checksum.
-        char scannerRssiMsg[32];
-        if (strncmp(msg, "#3,3,,", 6) == 0) {
-            const char *body = "#3,3,-140.0";
-            int checksum = 0;
-            for (const char *p = body; *p; ++p) {
-                checksum += *p;
-            }
-            checksum += ',';
-            snprintf(scannerRssiMsg, sizeof(scannerRssiMsg), "%s,%d\r", body, checksum % 100);
-            msg = scannerRssiMsg;
-        }
-#endif
-
        //myLilyGoBoard.getInfosFromMsg(msg);
         if(strncmp(msg,"#3,3",4) != 0)
         {
@@ -132,15 +100,6 @@ extern "C" {
 
     float SX1278_setRadioFrequencyHz(uint32_t freqHz, bool readRssi)
     {
-#ifdef TEMBED_CC1101
-        if (readRssi) {
-            return TEMBED_CC1101_fastScanRssi(freqHz);
-        }
-
-        // Leaving spectrum mode: restore the GDO0 bit-clock interrupt before
-        // the proven RadioLib Direct-Mode path configures the decoder again.
-        TEMBED_CC1101_fastScanEnd();
-#endif
         return myLilyGoBoard.SX1278_setRadioFrequencyHz(freqHz, readRssi);
     };
 
@@ -174,7 +133,7 @@ extern "C" {
         CRC16 crc(CRC16_CCITT_FALSE_POLYNOME, CRC16_CCITT_FALSE_INITIAL);
         crc.add(buffer, length);
         return(crc.calc());
-    };
+    }
 
     uint16_t getCRC2(const uint8_t* buffer, size_t length, uint16_t initialValue ) 
     {
