@@ -6,6 +6,11 @@
 #include "CRC.h"
 //#include <string>
 
+#ifdef TEMBED_CC1101
+extern "C" float TEMBED_CC1101_fastScanRssi(uint32_t freqHz);
+extern "C" void TEMBED_CC1101_fastScanEnd();
+#endif
+
 extern BLECharacteristic *pRxCharacteristic;
 float freq,rssi;
 double lat, lon, alt;
@@ -54,7 +59,7 @@ extern "C" {
     void ttgo_debug(int eCrcCntr, int blockCntr)
     {
         myLilyGoBoard.setDebugCrc(eCrcCntr, blockCntr);
-    }
+    };
 
     void ttgo_setDisplayFreq(float freqHz)
     {
@@ -100,6 +105,15 @@ extern "C" {
 
     float SX1278_setRadioFrequencyHz(uint32_t freqHz, bool readRssi)
     {
+#ifdef TEMBED_CC1101
+        if (readRssi) {
+            return TEMBED_CC1101_fastScanRssi(freqHz);
+        }
+
+        // Leaving spectrum mode: restore the GDO0 bit-clock interrupt before
+        // the proven RadioLib Direct-Mode path configures the decoder again.
+        TEMBED_CC1101_fastScanEnd();
+#endif
         return myLilyGoBoard.SX1278_setRadioFrequencyHz(freqHz, readRssi);
     };
 
@@ -133,7 +147,7 @@ extern "C" {
         CRC16 crc(CRC16_CCITT_FALSE_POLYNOME, CRC16_CCITT_FALSE_INITIAL);
         crc.add(buffer, length);
         return(crc.calc());
-    }
+    };
 
     uint16_t getCRC2(const uint8_t* buffer, size_t length, uint16_t initialValue ) 
     {
