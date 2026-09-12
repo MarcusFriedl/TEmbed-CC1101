@@ -12,6 +12,8 @@ extern "C" {
     void TEMBED_displaySetFrequencyHz(uint32_t freqHz);
     void TEMBED_displaySetRssi(float rssi);
     void TEMBED_displaySetScanner(bool active);
+    void TEMBED_displaySetSondeData(const char *id, double lat, double lon, double alt, uint32_t frameCounter);
+    void TEMBED_displayClearSonde();
 }
 #endif
 
@@ -64,6 +66,7 @@ extern "C" {
             : (uint32_t)(freq * 1000000.0f + 0.5f);
         TEMBED_displaySetFrequencyHz(freqHz);
         TEMBED_displaySetRssi(rssi);
+        TEMBED_displaySetSondeData(id, lat, lon, alt, frameCounter);
 #endif
     };
 
@@ -87,6 +90,7 @@ extern "C" {
     {
         myLilyGoBoard.setDisplayFreq(freqHz);
 #ifdef TEMBED_CC1101
+        TEMBED_displayClearSonde();
         TEMBED_displaySetFrequencyHz((uint32_t)freqHz);
 #endif
     };
