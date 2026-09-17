@@ -8,6 +8,12 @@
 
 #ifdef TEMBED_CC1101
 
+extern volatile uint32_t cc1101DroppedBits;
+extern volatile uint32_t cc1101ClockEdges;
+extern "C" {
+    extern volatile uint32_t rs41RealSyncHits;
+}
+
 namespace {
 
 static constexpr int TEMBED_CC1101_CS = 12;
@@ -21,6 +27,10 @@ static Adafruit_ST7789 tembedTft(&SPI, TEMBED_TFT_CS, TEMBED_TFT_DC, -1);
 struct DisplaySnapshot {
     uint32_t freqHz;
     float rssi;
+    float peakRssi5s;
+    uint32_t clockEdgesPerSec;
+    uint32_t syncHits;
+    uint32_t droppedBits;
     bool btConnected;
     bool scannerActive;
     bool sondeValid;
@@ -38,6 +48,9 @@ static portMUX_TYPE displayStateMux = portMUX_INITIALIZER_UNLOCKED;
 
 static uint32_t liveFreqHz = 0;
 static float liveRssi = -128.0f;
+static float livePeakRssi5s = -128.0f;
+static uint32_t peakWindowStartMs = 0;
+static uint32_t liveClockEdgesPerSec = 0;
 static bool liveBtConnected = false;
 static bool liveScannerActive = false;
 static bool liveDirty = true;
@@ -60,6 +73,8 @@ static uint32_t previousSampleMs = 0;
 
 static bool displayReady = false;
 static uint32_t lastDrawMs = 0;
+static uint32_t lastClockSampleMs = 0;
+static uint32_t lastClockEdges = 0;
 
 static void clearSondeStateLocked()
 {
@@ -87,6 +102,8 @@ static DisplaySnapshot getSnapshot()
     portENTER_CRITICAL(&displayStateMux);
     s.freqHz = liveFreqHz;
     s.rssi = liveRssi;
+    s.peakRssi5s = livePeakRssi5s;
+    s.clockEdgesPerSec = liveClockEdgesPerSec;
     s.btConnected = liveBtConnected;
     s.scannerActive = liveScannerActive;
     s.sondeValid = liveSondeValid;
@@ -100,6 +117,9 @@ static DisplaySnapshot getSnapshot()
     s.alt = liveAlt;
     s.climb = liveClimb;
     portEXIT_CRITICAL(&displayStateMux);
+
+    s.syncHits = rs41RealSyncHits;
+    s.droppedBits = cc1101DroppedBits;
 
     return s;
 }
@@ -117,7 +137,12 @@ static void drawLiveRows(const DisplaySnapshot &s)
     tembedTft.setTextSize(2);
     tembedTft.setTextColor(s.btConnected ? ST77XX_GREEN : ST77XX_YELLOW);
     tembedTft.setCursor(10, 45);
-    snprintf(line, sizeof(line), "CC1101 OK  iRa:%s", s.btConnected ? "ON" : "--");
+    if (!s.scannerActive && !s.sondeValid) {
+        snprintf(line, sizeof(line), "CC1101 DIAG iRa:%s", s.btConnected ? "ON" : "--");
+    }
+    else {
+        snprintf(line, sizeof(line), "CC1101 OK  iRa:%s", s.btConnected ? "ON" : "--");
+    }
     tembedTft.print(line);
 
     clearRow(67);
@@ -151,7 +176,12 @@ static void drawLiveRows(const DisplaySnapshot &s)
     }
     else {
         tembedTft.setTextColor(ST77XX_CYAN);
-        tembedTft.print("RS41 / RS92");
+        if (isfinite(s.peakRssi5s) && s.peakRssi5s > -127.5f) {
+            tembedTft.printf("Peak 5s: %.0f dBm", (double)s.peakRssi5s);
+        }
+        else {
+            tembedTft.print("Peak 5s: --- dBm");
+        }
     }
 
     clearRow(117);
@@ -167,7 +197,9 @@ static void drawLiveRows(const DisplaySnapshot &s)
         tembedTft.print("GPS: waiting");
     }
     else {
-        tembedTft.print("Waiting for sonde");
+        tembedTft.printf("CLK:%lu/s  SYNC:%lu",
+                         (unsigned long)s.clockEdgesPerSec,
+                         (unsigned long)s.syncHits);
     }
 
     clearRow(142, 28);
@@ -180,6 +212,10 @@ static void drawLiveRows(const DisplaySnapshot &s)
         else {
             tembedTft.printf("Alt %.0fm  V:---", s.alt);
         }
+    }
+    else if (!s.scannerActive && !s.sondeValid) {
+        tembedTft.printf("DROP:%lu  waiting RS41",
+                         (unsigned long)s.droppedBits);
     }
 }
 
@@ -204,6 +240,11 @@ extern "C" void TEMBED_displaySetFrequencyHz(uint32_t freqHz)
         }
     }
 
+    if (liveFreqHz != freqHz) {
+        livePeakRssi5s = -128.0f;
+        peakWindowStartMs = millis();
+    }
+
     liveFreqHz = freqHz;
     if (!liveScannerActive) {
         liveDirty = true;
@@ -218,8 +259,19 @@ extern "C" void TEMBED_displaySetRssi(float rssi)
         return;
     }
 
+    const uint32_t now = millis();
+
     portENTER_CRITICAL(&displayStateMux);
     liveRssi = rssi;
+
+    if (peakWindowStartMs == 0 || (uint32_t)(now - peakWindowStartMs) >= 5000U) {
+        peakWindowStartMs = now;
+        livePeakRssi5s = rssi;
+    }
+    else if (rssi > livePeakRssi5s) {
+        livePeakRssi5s = rssi;
+    }
+
     if (!liveScannerActive) {
         liveDirty = true;
     }
@@ -337,6 +389,9 @@ extern "C" void TEMBED_displaySetup()
 
     displayReady = true;
     lastDrawMs = millis();
+    lastClockSampleMs = lastDrawMs;
+    lastClockEdges = cc1101ClockEdges;
+    peakWindowStartMs = lastDrawMs;
 
     DisplaySnapshot s = getSnapshot();
     drawLiveRows(s);
@@ -353,6 +408,22 @@ extern "C" void TEMBED_displayService()
     }
 
     const uint32_t now = millis();
+    const uint32_t elapsedClockMs = now - lastClockSampleMs;
+
+    if (elapsedClockMs >= 1000U) {
+        uint32_t currentEdges = cc1101ClockEdges;
+        uint32_t deltaEdges = currentEdges - lastClockEdges;
+        uint32_t rate = (uint32_t)(((uint64_t)deltaEdges * 1000ULL) / elapsedClockMs);
+
+        portENTER_CRITICAL(&displayStateMux);
+        liveClockEdgesPerSec = rate;
+        liveDirty = true;
+        portEXIT_CRITICAL(&displayStateMux);
+
+        lastClockEdges = currentEdges;
+        lastClockSampleMs = now;
+    }
+
     if ((uint32_t)(now - lastDrawMs) < 500U) {
         return;
     }
