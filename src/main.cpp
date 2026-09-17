@@ -1,4 +1,5 @@
 #include <lilygo.h>
+#include <SPI.h>
 #include "freertos/stream_buffer.h"
 #include "bridge.h"
 #include "scanner.h"
@@ -79,6 +80,35 @@ void LAUNCHER_ESCAPE_thread(void *param)
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
+
+// The Flipper-derived RS41 preset used AGCCTRL2=0xC7. On a bare CC1101 this
+// disables the three highest DVGA gain settings. Keep the same 42 dB magnitude
+// target but allow all DVGA/LNA gain stages (0x07) for weak radiosondes.
+void CC1101_FULL_GAIN_thread(void *param)
+{
+    (void)param;
+    vTaskDelay(pdMS_TO_TICKS(3000));
+
+    constexpr int CC1101_CS = 12;
+    constexpr int CC1101_MISO = 10;
+    SPISettings settings(2000000, MSBFIRST, SPI_MODE0);
+
+    SPI.beginTransaction(settings);
+    digitalWrite(CC1101_CS, LOW);
+
+    uint32_t start = micros();
+    while (digitalRead(CC1101_MISO) == HIGH && (uint32_t)(micros() - start) < 2000U) {
+        ;
+    }
+
+    SPI.transfer(0x1B);   // AGCCTRL2, single-register write
+    SPI.transfer(0x07);   // full DVGA + full LNA, MAGN_TARGET = 42 dB
+    digitalWrite(CC1101_CS, HIGH);
+    SPI.endTransaction();
+
+    Serial.println("CC1101 weak-signal gain enabled: AGCCTRL2=0x07");
+    vTaskDelete(NULL);
+}
 #endif
 
 void setup() {
@@ -110,6 +140,17 @@ void setup() {
    xTaskCreate(SYNCDET_thread, "SyncDet",  2000, (void *)sys,     12, &xTaskSyncDet);
    xTaskCreate(SYS_thread,     "System",  50000, (void *)sys,     8, NULL);
    xTaskCreate(SCANNER_thread, "Scanner", 20000, (void *)scanner, 4, &xTaskScanner);
+
+#ifdef TEMBED_CC1101
+   xTaskCreate(
+       CC1101_FULL_GAIN_thread,
+       "CC1101FullGain",
+       2048,
+       NULL,
+       6,
+       NULL
+   );
+#endif
 
    attachInterrupt(PIN_DIO1, onDIO1Edge, RISING);
   }
