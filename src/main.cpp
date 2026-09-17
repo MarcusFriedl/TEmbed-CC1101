@@ -10,6 +10,8 @@ extern "C" {
 #ifdef TEMBED_CC1101
     void TEMBED_displaySetup();
     void TEMBED_displayService();
+    void TEMBED_gpsSetup();
+    void TEMBED_gpsService();
 #endif
 }
 
@@ -86,6 +88,9 @@ void setup() {
 
    ttgo_setup();
 #ifdef TEMBED_CC1101
+   // M5Stack GPS/BDS Unit v1.1: UART RX44/TX43 at 115200 baud.
+   TEMBED_gpsSetup();
+
    // TFT and CC1101 share the same hardware SPI pins. Initial drawing happens
    // before scanner/decoder tasks start; later updates are throttled by
    // TEMBED_displayService() in loop().
@@ -120,6 +125,7 @@ void loop()
   vTaskDelay(100/portTICK_PERIOD_MS);
   ttgo_100msTask();
 #ifdef TEMBED_CC1101
+  TEMBED_gpsService();
   TEMBED_displayService();
 #endif
 }
