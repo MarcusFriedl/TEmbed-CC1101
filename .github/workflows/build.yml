@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - master
+      - fix/cc1101-rs41-reception
 
 jobs:
   build:

@@ -40,6 +40,58 @@ static CC1101 cc1101 = new Module(
     SPI,
     cc1101SpiSettings
 );
+
+// The CC1101 can not reproduce the very narrow SX1278 filters used by the
+// original Ra receiver. 58 kHz is its narrowest supported RX bandwidth.
+static float cc1101SupportedBandwidth(float requestedKhz)
+{
+    static const float supported[] = {
+        58.0f, 68.0f, 81.0f, 102.0f, 116.0f, 135.0f, 162.0f, 203.0f,
+        232.0f, 270.0f, 325.0f, 406.0f, 464.0f, 541.0f, 650.0f, 812.0f
+    };
+
+    for (float bw : supported) {
+        if (requestedKhz <= bw) {
+            return bw;
+        }
+    }
+    return 812.0f;
+}
+
+// Demodulator loop settings taken from a CC1101 configuration proven to
+// receive RS41 at 4800 bit/s. RadioLib's generic direct mode sets the GDO
+// routing correctly, but leaves FOC/bit-sync/AGC at generic reset defaults.
+static int16_t cc1101ApplyRadiosondeProfile()
+{
+    int16_t state = cc1101.standby();
+    if (state != RADIOLIB_ERR_NONE) {
+        return state;
+    }
+
+    struct RegValue {
+        uint8_t reg;
+        uint8_t value;
+    };
+
+    static const RegValue profile[] = {
+        {RADIOLIB_CC1101_REG_FSCTRL1,  0x06}, // IF about 152 kHz
+        {RADIOLIB_CC1101_REG_FOCCFG,   0x1D}, // frequency-offset compensation
+        {RADIOLIB_CC1101_REG_BSCFG,    0x1C}, // bit synchronizer loop
+        {RADIOLIB_CC1101_REG_AGCCTRL2, 0xC7}, // radiosonde-friendly AGC
+        {RADIOLIB_CC1101_REG_AGCCTRL1, 0x00},
+        {RADIOLIB_CC1101_REG_AGCCTRL0, 0xB2},
+        {RADIOLIB_CC1101_REG_FREND1,   0xB6}, // RX front-end configuration
+    };
+
+    for (const RegValue &entry : profile) {
+        state = cc1101.SPIsetRegValue(entry.reg, entry.value);
+        if (state != RADIOLIB_ERR_NONE) {
+            return state;
+        }
+    }
+
+    return RADIOLIB_ERR_NONE;
+}
 #endif
 
 #define SX127x_FREQUENCY_STEP_SIZE   61.03515625 // in Hz (32 MHz / 2^19)
@@ -52,6 +104,7 @@ uint64_t rxedBits,pattern;
 
 #ifdef TEMBED_CC1101
 volatile uint32_t cc1101DroppedBits = 0;
+volatile uint32_t cc1101ClockEdges = 0;
 #endif
 
 uint8_t PIN_DIO1,dtstate;
@@ -77,6 +130,10 @@ IRAM_ATTR void onDIO1Edge() {
     } else {
         bit = (GPIO.in >> isr_lora_dio2_pin) & 0x01;
     }
+
+#ifdef TEMBED_CC1101
+    cc1101ClockEdges++;
+#endif
    
 
     BaseType_t sent =
@@ -324,7 +381,7 @@ void LilyGo::EEPROM_writeCfg(uint32_t frequency)
 void LilyGo::EEPROM_writeCfg(uint8_t detector)
 {
     EEPROM.begin(5);
-    EEPROM.writeByte(4,detector);
+    EEPROM.writeByte(4, detector);
     EEPROM.commit();
 }
 
@@ -424,7 +481,11 @@ void LilyGo::SX1278_setup() {
         16
     );
 
-    Serial.printf("CC1101 init state: %d\n", state);
+    if (state == RADIOLIB_ERR_NONE) {
+        state = cc1101ApplyRadiosondeProfile();
+    }
+
+    Serial.printf("CC1101 init/profile state: %d\n", state);
 
 #else
 
@@ -546,10 +607,111 @@ void LilyGo::SX1278_ioctl(const SX1278_Config config[]) {
 
 #ifdef TEMBED_CC1101
 
-    // Die Config-Tabellen enthalten SX1278-Registerwerte.
-    // Diese dürfen niemals direkt in den CC1101 geschrieben werden.
-    // RS41 wird vorerst über RadioLib konfiguriert.
-    (void)config;
+    // Translate the relevant SX1278 FSK profile parameters into their CC1101
+    // equivalents. Previously this function was a no-op on T-Embed, so all
+    // detector-specific demodulator settings were silently lost.
+    bool haveBitrateMsb = false;
+    bool haveBitrateLsb = false;
+    bool haveFdevMsb = false;
+    bool haveFdevLsb = false;
+    bool haveRxBw = false;
+    uint8_t bitrateMsb = 0;
+    uint8_t bitrateLsb = 0;
+    uint8_t fdevMsb = 0;
+    uint8_t fdevLsb = 0;
+    uint8_t rxBwReg = 0;
+
+    for (int i = 0; config[i].reg != 0xFF; i++) {
+        switch (config[i].reg) {
+            case 0x02:
+                bitrateMsb = config[i].value;
+                haveBitrateMsb = true;
+                break;
+            case 0x03:
+                bitrateLsb = config[i].value;
+                haveBitrateLsb = true;
+                break;
+            case 0x04:
+                fdevMsb = config[i].value;
+                haveFdevMsb = true;
+                break;
+            case 0x05:
+                fdevLsb = config[i].value;
+                haveFdevLsb = true;
+                break;
+            case 0x12:
+                rxBwReg = config[i].value;
+                haveRxBw = true;
+                break;
+            default:
+                break;
+        }
+    }
+
+    int16_t state = cc1101.standby();
+    if (state != RADIOLIB_ERR_NONE) {
+        Serial.printf("CC1101 profile standby failed: %d\n", state);
+        return;
+    }
+
+    float configuredBitrateKbps = 0.0f;
+    float configuredFdevKhz = 0.0f;
+    float configuredRxBwKhz = 0.0f;
+
+    if (haveBitrateMsb && haveBitrateLsb) {
+        uint16_t divisor = ((uint16_t)bitrateMsb << 8) | bitrateLsb;
+        if (divisor != 0) {
+            configuredBitrateKbps = 32000.0f / (float)divisor;
+            state = cc1101.setBitRate(configuredBitrateKbps);
+            if (state != RADIOLIB_ERR_NONE) {
+                Serial.printf("CC1101 setBitRate %.3f failed: %d\n", configuredBitrateKbps, state);
+                return;
+            }
+        }
+    }
+
+    if (haveFdevMsb && haveFdevLsb) {
+        uint16_t fdevRaw = ((uint16_t)fdevMsb << 8) | fdevLsb;
+        configuredFdevKhz = ((float)fdevRaw * (float)SX127x_FREQUENCY_STEP_SIZE) / 1000.0f;
+        state = cc1101.setFrequencyDeviation(configuredFdevKhz);
+        if (state != RADIOLIB_ERR_NONE) {
+            Serial.printf("CC1101 setFdev %.3f failed: %d\n", configuredFdevKhz, state);
+            return;
+        }
+    }
+
+    if (haveRxBw) {
+        uint8_t mantCode = (rxBwReg >> 3) & 0x03;
+        uint8_t exp = rxBwReg & 0x07;
+        uint16_t mant = 16;
+        if (mantCode == 1) {
+            mant = 20;
+        }
+        else if (mantCode == 2) {
+            mant = 24;
+        }
+
+        float requestedRxBwKhz = 32000.0f / ((float)mant * (float)(1UL << (exp + 2)));
+        configuredRxBwKhz = cc1101SupportedBandwidth(requestedRxBwKhz);
+        state = cc1101.setRxBandwidth(configuredRxBwKhz);
+        if (state != RADIOLIB_ERR_NONE) {
+            Serial.printf("CC1101 setRxBw %.1f failed: %d\n", configuredRxBwKhz, state);
+            return;
+        }
+    }
+
+    state = cc1101ApplyRadiosondeProfile();
+    if (state != RADIOLIB_ERR_NONE) {
+        Serial.printf("CC1101 radiosonde profile failed: %d\n", state);
+        return;
+    }
+
+    Serial.printf(
+        "CC1101 profile: %.3f kbit/s, fdev %.3f kHz, RXBW %.1f kHz\n",
+        configuredBitrateKbps,
+        configuredFdevKhz,
+        configuredRxBwKhz
+    );
 
 #else
 
@@ -606,6 +768,17 @@ void LilyGo::a100msTask()
    
             if(activeScreen == SCREEN_SCANNER)
                OLED_drawScreen(SCREEN_SCANNER,false);
+#ifdef TEMBED_CC1101
+            static uint32_t previousClockEdges = 0;
+            uint32_t currentClockEdges = cc1101ClockEdges;
+            Serial.printf(
+                "CC1101 RX: clock=%lu/s sync=%lu dropped=%lu\n",
+                (unsigned long)(currentClockEdges - previousClockEdges),
+                (unsigned long)rs41RealSyncHits,
+                (unsigned long)cc1101DroppedBits
+            );
+            previousClockEdges = currentClockEdges;
+#endif
     // uint64_t rxedTmp = rxedBits;
     // ESP_LOGE("HP", "rxed = 0x%llx, pattern = 0x%llx, dtstate = %d", rxedTmp, pattern, dtstate);
     }
@@ -890,7 +1063,14 @@ void LilyGo::handleConsole(const char *cmd)
       case 'r':
 {
 #ifdef TEMBED_CC1101
-    Serial.println("CC1101: alter SX1278-Registerdump deaktiviert");
+    Serial.printf("CC1101 counters: clock=%lu sync=%lu dropped=%lu\n",
+                  (unsigned long)cc1101ClockEdges,
+                  (unsigned long)rs41RealSyncHits,
+                  (unsigned long)cc1101DroppedBits);
+    for (int i = 0; i <= 0x2E; i++) {
+        int16_t value = cc1101.SPIgetRegValue((uint8_t)i);
+        Serial.printf("CC1101[0x%02X] = 0x%02X\n", i, value & 0xFF);
+    }
 #else
     for(int i=0;i<0x80;i++)
     {
