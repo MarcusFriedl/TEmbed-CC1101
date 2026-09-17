@@ -6,6 +6,7 @@ on:
     branches:
       - master
       - fix/cc1101-rs41-reception
+      - feature/rs41-chase-full-gain
 
 jobs:
   build:

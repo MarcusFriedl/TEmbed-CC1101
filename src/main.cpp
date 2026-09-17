@@ -11,6 +11,8 @@ extern "C" {
 #ifdef TEMBED_CC1101
     void TEMBED_displaySetup();
     void TEMBED_displayService();
+    void TEMBED_gpsSetup();
+    void TEMBED_gpsService();
 #endif
 }
 
@@ -26,33 +28,24 @@ TaskHandle_t xTaskScanner = NULL;
 TaskHandle_t xTaskSyncDet = NULL;
 StreamBufferHandle_t xBitBuffer;
 const size_t xStreamBufferSizeBytes = 1024;
-const size_t xTriggerLevel = 1; 
+const size_t xTriggerLevel = 1;
 
 int i_cntr = 0,*hc=0;
-// IRAM_ATTR void onDIO1Edge() {
-//     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-//    // uint8_t bit = (GPIO.in1.val /*>> (PIN_DIO2 - 32)*/) & 0x01;
-//     uint8_t bit = digitalRead(PIN_DIO2);
-//     xStreamBufferSendFromISR(xBitBuffer, &bit, 1, &xHigherPriorityTaskWoken);
-//     if (xHigherPriorityTaskWoken == pdTRUE) { portYIELD_FROM_ISR(); }
-// }
-
-
 
 void SYNCDET_thread (void *param)
-{ 
+{
     uint8_t receivedBit;
 
-    while (1) 
+    while (1)
     {
         if (xStreamBufferReceive(xBitBuffer, &receivedBit, 1, portMAX_DELAY) > 0) {
             do
             {
-                PIN_INT3_IRQHandler2(receivedBit);  // Call the IRQ handler to process the bit
-            } while (xStreamBufferReceive(xBitBuffer, &receivedBit, 1, 0) > 0);      
+                PIN_INT3_IRQHandler2(receivedBit);
+            } while (xStreamBufferReceive(xBitBuffer, &receivedBit, 1, 0) > 0);
         }
     }
-} 
+}
 
 #ifdef TEMBED_CC1101
 void LAUNCHER_ESCAPE_thread(void *param)
@@ -81,9 +74,9 @@ void LAUNCHER_ESCAPE_thread(void *param)
     }
 }
 
-// The Flipper-derived RS41 preset used AGCCTRL2=0xC7. On a bare CC1101 this
-// disables the three highest DVGA gain settings. Keep the same 42 dB magnitude
-// target but allow all DVGA/LNA gain stages (0x07) for weak radiosondes.
+// Weak-signal fix confirmed on-air with RS41 T4550632.
+// The original Flipper-derived profile used AGCCTRL2=0xC7, which blocks the
+// three highest DVGA stages. Re-enable them after receiver initialization.
 void CC1101_FULL_GAIN_thread(void *param)
 {
     (void)param;
@@ -101,8 +94,8 @@ void CC1101_FULL_GAIN_thread(void *param)
         ;
     }
 
-    SPI.transfer(0x1B);   // AGCCTRL2, single-register write
-    SPI.transfer(0x07);   // full DVGA + full LNA, MAGN_TARGET = 42 dB
+    SPI.transfer(0x1B);
+    SPI.transfer(0x07);
     digitalWrite(CC1101_CS, HIGH);
     SPI.endTransaction();
 
@@ -116,23 +109,23 @@ void setup() {
 
    ttgo_setup();
 #ifdef TEMBED_CC1101
+   TEMBED_gpsSetup();
    // TFT and CC1101 share the same hardware SPI pins. Initial drawing happens
-   // before scanner/decoder tasks start; later updates are throttled by
-   // TEMBED_displayService() in loop().
+   // before scanner/decoder tasks start; later updates are throttled.
    TEMBED_displaySetup();
 #endif
-    #ifdef TEMBED_CC1101
-    xTaskCreate(
-        LAUNCHER_ESCAPE_thread,
-        "LauncherEscape",
-        2048,
-        NULL,
-        20,
-        NULL
-    );
+#ifdef TEMBED_CC1101
+   xTaskCreate(
+       LAUNCHER_ESCAPE_thread,
+       "LauncherEscape",
+       2048,
+       NULL,
+       20,
+       NULL
+   );
 #endif
    SYS_open(&sys);
-   
+
    SCANNER_open(&scanner);
    SONDE_open(&sonde);
 
@@ -153,14 +146,14 @@ void setup() {
 #endif
 
    attachInterrupt(PIN_DIO1, onDIO1Edge, RISING);
-  }
+}
 
-
-void loop() 
+void loop()
 {
   vTaskDelay(100/portTICK_PERIOD_MS);
   ttgo_100msTask();
 #ifdef TEMBED_CC1101
+  TEMBED_gpsService();
   TEMBED_displayService();
 #endif
 }
