@@ -74,8 +74,9 @@ struct ButtonTracker {
   bool longHandled = false;
 };
 
-ButtonTracker centerBtn{PIN_ENC_KEY};
-ButtonTracker backBtn{PIN_BACK};
+ButtonTracker centerBtn;
+ButtonTracker backBtn;
+
 
 static double normalize360(double deg) {
   while (deg < 0.0) deg += 360.0;
@@ -693,6 +694,8 @@ static void serviceButton(ButtonTracker &btn, uint32_t longMs, bool isCenter) {
 }
 
 static void initHardware() {
+  centerBtn.pin = PIN_ENC_KEY;
+  backBtn.pin = PIN_BACK;
   pinMode(PIN_PWR_EN, OUTPUT);
   digitalWrite(PIN_PWR_EN, HIGH);
   delay(10);
