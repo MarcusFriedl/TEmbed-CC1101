@@ -1,0 +1,40 @@
+name: Build T-Embed Geocache
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - geocache-firmware
+    paths:
+      - "src_geocache/**"
+      - "platformio_geocache.ini"
+      - ".github/workflows/geocache-build.yml"
+      - "GEOCACHE_README.md"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Repository laden
+        uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: PlatformIO installieren
+        run: pip install platformio
+
+      - name: Geocache-Firmware bauen
+        run: pio run -c platformio_geocache.ini -e tembed_geocache
+
+      - name: Firmware umbenennen
+        run: cp .pio/build/tembed_geocache/firmware.bin TEmbed-Geocache.bin
+
+      - name: Firmware bereitstellen
+        uses: actions/upload-artifact@v4
+        with:
+          name: TEmbed-Geocache
+          path: TEmbed-Geocache.bin
