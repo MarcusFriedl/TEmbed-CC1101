@@ -14,9 +14,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      OKAPI_CONSUMER_KEY: ${{ secrets.OKAPI_CONSUMER_KEY }}
-
     steps:
       - name: Repository laden
         uses: actions/checkout@v4
@@ -25,18 +22,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.x"
-
-      - name: OKAPI-Key fuer Build erzeugen
-        shell: bash
-        run: |
-          python - <<'PY'
-          import os
-          key = os.environ.get("OKAPI_CONSUMER_KEY", "")
-          key = key.replace("\\", "\\\\").replace('"', '\\"')
-          with open("src_geocache_online/okapi_key.h", "w", encoding="utf-8") as f:
-              f.write('#pragma once\n#define OKAPI_CONSUMER_KEY "' + key + '"\n')
-          print("OKAPI key configured:", bool(key))
-          PY
 
       - name: PlatformIO installieren
         run: pip install platformio
