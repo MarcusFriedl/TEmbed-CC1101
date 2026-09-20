@@ -36,7 +36,7 @@ static constexpr uint32_t GPS_BAUD = 115200;
 
 // ---------------- App settings ----------------
 static constexpr uint32_t GPS_FIX_MAX_AGE_MS = 6000;
-static constexpr uint32_t DRAW_INTERVAL_MS = 400;
+static constexpr uint32_t DRAW_INTERVAL_MS = 500;
 static constexpr uint32_t CENTER_LONG_MS = 1300;
 static constexpr uint32_t BACK_LONG_MS = 2500;
 static constexpr int MAX_CACHES = 20;
@@ -193,7 +193,6 @@ static void loadCaches() {
 }
 
 static void drawHeader(const char *title) {
-  tft.fillScreen(ST77XX_BLACK);
   tft.setTextWrap(false);
   tft.setTextSize(2);
   tft.setTextColor(ST77XX_CYAN);
@@ -212,6 +211,7 @@ static void drawHeader(const char *title) {
 }
 
 static void drawFooter() {
+  tft.fillRect(0, 154, 320, 16, ST77XX_BLACK);
   tft.setTextSize(1);
   tft.setCursor(5, 158);
   if (millis() < statusUntil) {
@@ -345,30 +345,20 @@ static void drawArrow(int16_t cx, int16_t cy, int16_t length, double angleDeg, u
   tft.fillCircle(cx, cy, 3, color);
 }
 
-static void drawNavScreen() {
-  drawHeader("NAV");
-  if (cacheCount == 0) {
-    tft.setTextColor(ST77XX_WHITE);
-    tft.setTextSize(2);
-    tft.setCursor(12, 60);
-    tft.print("Kein Ziel geladen");
-    drawFooter();
-    return;
-  }
+static void drawNavDynamic() {
+  if (cacheCount == 0) return;
 
   CacheEntry &c = caches[selectedCache];
-  tft.setTextSize(1);
-  tft.setTextColor(ST77XX_WHITE);
-  tft.setCursor(52, 7);
-  String name = c.name;
-  if (name.length() > 25) name = name.substring(0, 25);
-  tft.print(name);
+
+  // Only repaint the two dynamic navigation areas, never the full display.
+  tft.fillRect(5, 31, 110, 119, ST77XX_BLACK);
+  tft.fillRect(116, 42, 204, 101, ST77XX_BLACK);
 
   if (!gpsFixValid()) {
+    tft.setTextColor(ST77XX_WHITE);
     tft.setTextSize(2);
     tft.setCursor(12, 65);
     tft.print("Warte auf GPS-Fix");
-    drawFooter();
     return;
   }
 
@@ -402,6 +392,28 @@ static void drawNavScreen() {
   tft.setTextColor(ST77XX_WHITE);
   tft.setCursor(120, 118);
   tft.printf("%s  D%.1f/T%.1f", c.code.c_str(), c.difficulty, c.terrain);
+}
+
+static void drawNavScreen() {
+  drawHeader("NAV");
+  if (cacheCount == 0) {
+    tft.setTextColor(ST77XX_WHITE);
+    tft.setTextSize(2);
+    tft.setCursor(12, 60);
+    tft.print("Kein Ziel geladen");
+    drawFooter();
+    return;
+  }
+
+  CacheEntry &c = caches[selectedCache];
+  tft.setTextSize(1);
+  tft.setTextColor(ST77XX_WHITE);
+  tft.setCursor(52, 7);
+  String name = c.name;
+  if (name.length() > 25) name = name.substring(0, 25);
+  tft.print(name);
+
+  drawNavDynamic();
   drawFooter();
 }
 
@@ -439,8 +451,10 @@ static void drawDetailScreen() {
   drawFooter();
 }
 
-static void drawGpsScreen() {
-  drawHeader("GPS");
+static void drawGpsDynamic() {
+  // Small body refresh only. Header and footer stay untouched.
+  tft.fillRect(5, 28, 315, 122, ST77XX_BLACK);
+
   tft.setTextSize(1);
   tft.setTextColor(gpsFixValid() ? ST77XX_GREEN : ST77XX_RED);
   tft.setCursor(10, 32);
@@ -474,6 +488,11 @@ static void drawGpsScreen() {
     tft.setTextColor(ST77XX_YELLOW);
     tft.print("WLAN nicht verbunden");
   }
+}
+
+static void drawGpsScreen() {
+  drawHeader("GPS");
+  drawGpsDynamic();
   drawFooter();
 }
 
@@ -509,7 +528,35 @@ static void drawInfoScreen() {
   drawFooter();
 }
 
+static void refreshListDistances() {
+  if (fetching || cacheCount == 0) return;
+
+  int first = selectedCache - 2;
+  if (first < 0) first = 0;
+  if (first > cacheCount - 5) first = max(0, cacheCount - 5);
+
+  tft.setTextSize(1);
+  for (int row = 0; row < 5; ++row) {
+    int i = first + row;
+    if (i >= cacheCount) break;
+    int y = 31 + row * 24;
+    bool sel = i == selectedCache;
+    tft.fillRect(236, y - 1, 80, 10, sel ? ST77XX_BLUE : ST77XX_BLACK);
+    tft.setTextColor(ST77XX_WHITE);
+    tft.setCursor(238, y);
+    double d = cacheDistance(caches[i]);
+    if (d >= 0) {
+      if (d < 1000) tft.printf("%.0fm", d);
+      else tft.printf("%.1fkm", d / 1000.0);
+    } else {
+      tft.print("--");
+    }
+  }
+}
+
 static void drawScreen() {
+  // A full clear happens only for a real screen/content change.
+  tft.fillScreen(ST77XX_BLACK);
   switch (screenMode) {
     case SCREEN_NAV: drawNavScreen(); break;
     case SCREEN_DETAIL: drawDetailScreen(); break;
@@ -518,6 +565,23 @@ static void drawScreen() {
     case SCREEN_LIST:
     default: drawListScreen(); break;
   }
+}
+
+static void refreshDynamic() {
+  switch (screenMode) {
+    case SCREEN_NAV:
+      drawNavDynamic();
+      break;
+    case SCREEN_GPS:
+      drawGpsDynamic();
+      break;
+    case SCREEN_LIST:
+      refreshListDistances();
+      break;
+    default:
+      break;
+  }
+  drawFooter();
 }
 
 static bool httpGetJson(const String &url, String &payload) {
@@ -555,7 +619,8 @@ static bool fetchNearbyCaches() {
 
   fetching = true;
   screenMode = SCREEN_LIST;
-  screenDirty = true;
+  screenDirty = false;
+  lastDrawMs = millis();
   drawScreen();
 
   String center = String(gps.location.lat(), 6) + "%7C" + String(gps.location.lng(), 6);
@@ -852,10 +917,13 @@ void loop() {
   }
 
   uint32_t now = millis();
-  if (screenDirty || (uint32_t)(now - lastDrawMs) >= DRAW_INTERVAL_MS) {
+  if (screenDirty) {
     screenDirty = false;
     lastDrawMs = now;
     drawScreen();
+  } else if ((uint32_t)(now - lastDrawMs) >= DRAW_INTERVAL_MS) {
+    lastDrawMs = now;
+    refreshDynamic();
   }
 
   delay(5);
