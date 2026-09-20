@@ -34,21 +34,11 @@ Die Firmware braucht keine Handy-App zur Bedienung:
 
 ## OKAPI Consumer Key
 
-Opencaching.de verlangt für die Cache-Suche einen kostenlosen Consumer Key.
+Die verwendeten Suchmethoden benötigen nur **OKAPI Level 1** und damit den Consumer Key. Der Consumer Secret wird für diese Firmware nicht benötigt.
 
-Anmeldung:
-https://www.opencaching.de/okapi/signup.html
+Aus Sicherheitsgründen enthält das öffentliche Repository **keinen persönlichen Consumer Key**. GitHub Actions kompiliert deshalb mit einem eindeutigen Platzhalter. Eine personalisierte BIN kann anschließend mit `tools/patch_okapi_key.py` gepatcht werden; das Skript berechnet dabei auch ESP32-Checksumme und angehängten SHA-256-Image-Hash neu.
 
-Im GitHub-Repository anschließend unter:
-
-**Settings → Secrets and variables → Actions → New repository secret**
-
-den Secret anlegen:
-
-- Name: `OKAPI_CONSUMER_KEY`
-- Wert: der von Opencaching.de erhaltene Consumer Key
-
-Der Key wird nur beim GitHub-Actions-Build in die Firmware eingesetzt und nicht im Repository gespeichert.
+Der rohe GitHub-Actions-Artifact ist deshalb ein Template-Build. Für die tatsächliche Online-Suche muss der Platzhalter durch einen gültigen Consumer Key ersetzt werden.
 
 ## WLAN
 
