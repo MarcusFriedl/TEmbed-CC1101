@@ -12,6 +12,8 @@
 #include <math.h>
 #include "okapi_key.h"
 
+static constexpr uint16_t COLOR_DARKGREY = 0x7BEF;
+
 // ---------------- T-Embed CC1101 hardware ----------------
 static constexpr int PIN_SPI_SCK   = 11;
 static constexpr int PIN_SPI_MISO  = 10;
@@ -218,7 +220,7 @@ static void drawFooter() {
     if (s.length() > 50) s = s.substring(0, 50);
     tft.print(s);
   } else {
-    tft.setTextColor(ST77XX_DARKGREY);
+    tft.setTextColor(COLOR_DARKGREY);
     tft.print("Lang Druck: Suche/WPS   Seite 2.5s: Launcher");
   }
 }
@@ -321,7 +323,7 @@ static void drawListScreen() {
     }
 
     tft.setCursor(17, y + 11);
-    tft.setTextColor(sel ? ST77XX_CYAN : ST77XX_DARKGREY);
+    tft.setTextColor(sel ? ST77XX_CYAN : COLOR_DARKGREY);
     tft.printf("%s  D%.1f/T%.1f", caches[i].type.c_str(), caches[i].difficulty, caches[i].terrain);
   }
   drawFooter();
@@ -431,7 +433,7 @@ static void drawDetailScreen() {
   tft.print("Hint:");
   drawWrapped(c.hint.length() ? c.hint : "(kein Hint hinterlegt)", 8, 81, 50, 4, ST77XX_WHITE);
 
-  tft.setTextColor(ST77XX_DARKGREY);
+  tft.setTextColor(COLOR_DARKGREY);
   tft.setCursor(8, 137);
   tft.print("Daten: Opencaching.de");
   drawFooter();
