@@ -1,0 +1,54 @@
+name: Build T-Embed Geocache Online
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - geocache-online
+    paths:
+      - "src_geocache_online/**"
+      - "platformio_geocache_online.ini"
+      - ".github/workflows/geocache-online-build.yml"
+      - "GEOCACHE_ONLINE_README.md"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      OKAPI_CONSUMER_KEY: ${{ secrets.OKAPI_CONSUMER_KEY }}
+
+    steps:
+      - name: Repository laden
+        uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: OKAPI-Key fuer Build erzeugen
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          key = os.environ.get("OKAPI_CONSUMER_KEY", "")
+          key = key.replace("\\", "\\\\").replace('"', '\\"')
+          with open("src_geocache_online/okapi_key.h", "w", encoding="utf-8") as f:
+              f.write('#pragma once\n#define OKAPI_CONSUMER_KEY "' + key + '"\n')
+          print("OKAPI key configured:", bool(key))
+          PY
+
+      - name: PlatformIO installieren
+        run: pip install platformio
+
+      - name: Online-Geocache-Firmware bauen
+        run: pio run -c platformio_geocache_online.ini -e tembed_geocache_online
+
+      - name: Firmware umbenennen
+        run: cp .pio/build/tembed_geocache_online/firmware.bin TEmbed-Geocache-Online.bin
+
+      - name: Firmware bereitstellen
+        uses: actions/upload-artifact@v4
+        with:
+          name: TEmbed-Geocache-Online
+          path: TEmbed-Geocache-Online.bin
