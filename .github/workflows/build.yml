@@ -5,6 +5,9 @@ on:
   push:
     branches:
       - fox-ultimate
+  pull_request:
+    branches:
+      - master
 
 jobs:
   build:
