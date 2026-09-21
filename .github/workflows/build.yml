@@ -1,35 +1,42 @@
-name: Build Ra-TEmbed
+name: Build Fox Ultimate
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - master
+      - fox-ultimate
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Repository laden
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Python einrichten
+      - name: Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.x"
 
-      - name: PlatformIO installieren
+      - name: Install PlatformIO
         run: pip install platformio
 
-      - name: T-Embed Firmware bauen
-        run: pio run -e tembed_s3_test
+      - name: Build Fox Ultimate
+        run: pio run -e fox_ultimate
 
-      - name: Firmware umbenennen
-        run: cp .pio/build/tembed_s3_test/firmware.bin Ra-TEmbed.bin
+      - name: Prepare firmware
+        run: |
+          cp .pio/build/fox_ultimate/firmware.bin FoxUltimate-TEmbed-v1.0.0.bin
+          cp .pio/build/fox_ultimate/bootloader.bin FoxUltimate-bootloader.bin || true
+          cp .pio/build/fox_ultimate/partitions.bin FoxUltimate-partitions.bin || true
 
-      - name: Firmware bereitstellen
+      - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Ra-TEmbed
-          path: Ra-TEmbed.bin
+          name: FoxUltimate-TEmbed-v1.0.0
+          path: |
+            FoxUltimate-TEmbed-v1.0.0.bin
+            FoxUltimate-bootloader.bin
+            FoxUltimate-partitions.bin
+          if-no-files-found: warn
