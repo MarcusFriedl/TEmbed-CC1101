@@ -1,0 +1,32 @@
+name: Fox Ultimate PR Build
+
+on:
+  pull_request:
+    branches:
+      - fox-ultimate
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Install PlatformIO
+        run: pip install platformio
+      - name: Build
+        run: pio run -e fox_ultimate
+      - name: Package
+        run: |
+          cp .pio/build/fox_ultimate/firmware.bin FoxUltimate-TEmbed-v1.0.0.bin
+          cp .pio/build/fox_ultimate/bootloader.bin FoxUltimate-bootloader.bin || true
+          cp .pio/build/fox_ultimate/partitions.bin FoxUltimate-partitions.bin || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FoxUltimate-TEmbed-v1.0.0
+          path: |
+            FoxUltimate-TEmbed-v1.0.0.bin
+            FoxUltimate-bootloader.bin
+            FoxUltimate-partitions.bin
+          if-no-files-found: warn
