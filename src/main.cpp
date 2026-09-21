@@ -277,7 +277,8 @@ uint32_t sendDataPacket(){
   radio.standby(); radio.packetMode(); radio.setOOK(false);
   radio.setFrequency(cfg.freqMHz); radio.setBitRate(4.8); radio.setFrequencyDeviation(5.0);
   radio.setRxBandwidth(58.0); radio.setOutputPower(cfg.powerDbm);
-  radio.transmit(dataPayload());
+  String payload=dataPayload();
+  radio.transmit(payload);
   radio.standby(); radio.setOOK(true);
   pinMode(PIN_GDO0,OUTPUT); digitalWrite(PIN_GDO0,LOW);
   return millis()-start;
@@ -311,7 +312,8 @@ uint32_t transmitBeacon(){
 // Hard safety guard: total burst time must not exceed 10% of the overall cycle.
 uint32_t guardedCycleMs(uint32_t txEnvelopeMs){
   if(!txEnvelopeMs) return cfg.intervalMs;
-  return max(cfg.intervalMs,txEnvelopeMs*10UL);
+  uint32_t guardMs=txEnvelopeMs*10U;
+  return cfg.intervalMs>guardMs?cfg.intervalMs:guardMs;
 }
 
 void startHunt(){
