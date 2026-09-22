@@ -32,7 +32,6 @@ static constexpr int PIN_TFT_BL   = 21;
 static constexpr uint32_t GPS_BAUD = 115200;
 static constexpr uint32_t GPS_FIX_MAX_AGE_MS = 6000;
 static constexpr uint32_t SIDE_FOUND_MS = 1200;
-static constexpr uint32_t SIDE_LAUNCHER_MS = 2500;
 static constexpr int SPI_SCK      = 11;
 static constexpr int SPI_MISO     = 10;
 static constexpr int SPI_MOSI     = 9;
@@ -40,7 +39,7 @@ static constexpr int SPI_MOSI     = 9;
 static constexpr float FREQ_MIN = 433.050f;
 static constexpr float FREQ_MAX = 434.790f;
 static constexpr float FREQ_DEFAULT = 433.920f;
-static constexpr char FW_VERSION[] = "1.1.0";
+static constexpr char FW_VERSION[] = "1.2.0";
 
 TFT_eSPI tft;
 SPIClass radioSPI(HSPI);
@@ -409,32 +408,79 @@ void drawMain(){
   tft.setTextColor(TFT_CYAN,TFT_BLACK); tft.drawString(String(cfg.freqMHz,3)+" MHz",10,86,4);
   tft.setTextColor(TFT_WHITE,TFT_BLACK); tft.drawString("Modus: "+modeName()+"   Leistung: "+String(cfg.powerDbm)+" dBm",10,116,2);
   tft.setTextDatum(BR_DATUM); tft.setTextColor(TFT_DARKGREY,TFT_BLACK);
-  tft.drawString("SIDE kurz Start | 1.2s FOUND | 2.5s Launcher | Encoder Menue",315,166,1);
+  tft.drawString("SIDE kurz: Start/Stop | lang: FOUND | Encoder: Menue",315,166,1);
   updateMainDynamic();
 }
 
 const char* menuLabels[]={
-  "Sendemodus",
-  "Sendefrequenz",
-  "Sendeleistung",
-  "Abstand zwischen Signalen",
-  "Dauer kurzer Signalton",
-  "Morse-Geschwindigkeit",
+  "Modus",
+  "Frequenz",
+  "Leistung",
+  "Signalabstand",
+  "Signalton-Dauer",
+  "Morse-Tempo",
   "Tonhoehe",
-  "Hinweis senden alle N Signale",
-  "GPS-Empfaenger",
-  "FoxLink-Zusatzdaten senden",
-  "GPS-Position im FoxLink",
+  "Hinweis-Intervall",
+  "GPS",
+  "FoxLink",
+  "GPS im FoxLink",
   "LEDs",
-  "Display automatisch aus",
-  "Display aus nach",
-  "Jagd beim Einschalten starten",
-  "Web-Konfiguration oeffnen",
-  "GPS-Status anzeigen",
-  "Jagdstatistik loeschen",
-  "Zurueck zum Launcher",
+  "Display aus",
+  "Display-Timer",
+  "Autostart",
+  "Web-Konfiguration",
+  "GPS-Status",
+  "Statistik loeschen",
+  "Launcher",
   "Menue schliessen"
 };
+
+const char* menuHelp1[]={
+  "Wie der Fuchs sendet:",
+  "Sendefrequenz fuer die Jagd.",
+  "HF-Sendeleistung des CC1101.",
+  "Pause bis zum naechsten Signal.",
+  "Laenge des kurzen Pieptons.",
+  "Tempo der Morsezeichen.",
+  "Hoehe des hoerbaren AM-Tons.",
+  "Wie oft der Hinweis gemorst wird.",
+  "Externes GPS-Modul ein/aus.",
+  "Zusaetzliche Datenpakete senden.",
+  "Koordinaten in FoxLink mitsenden.",
+  "RGB-LEDs am T-Embed ein/aus.",
+  "Display im Versteck abschalten.",
+  "Zeit bis das Display ausgeht.",
+  "Jagd direkt nach Start beginnen.",
+  "Einstellungen per Handy aendern.",
+  "GPS-Daten und Satelliten pruefen.",
+  "Bestzeit und Jagdzaehler loeschen.",
+  "Zurueck in den Firmware-Launcher.",
+  "Einstellungen verlassen."
+};
+
+const char* menuHelp2[]={
+  "PULSE, MORSE oder HYBRID.",
+  "H4M Fox Hunt auf denselben Wert.",
+  "Mehr ist nicht automatisch besser.",
+  "Groesser = Fuchs sendet seltener.",
+  "Nur relevant bei PULSE/HYBRID.",
+  "Hoeher = schnelleres Morse.",
+  "Nur der Klang, nicht die Frequenz.",
+  "Beispiel: jedes 10. Signal.",
+  "Bei AUS wird GPS ignoriert.",
+  "Fuer spaetere FoxLink-Empfaenger.",
+  "Achtung: kann das Versteck verraten!",
+  "Im Stealth-Modus ohnehin dunkel.",
+  "Spart Licht und etwas Strom.",
+  "Nur bei aktivem 'Display aus'.",
+  "Praktisch fuer festen Draußenfuchs.",
+  "WLAN FoxUltimate / 192.168.4.1",
+  "Zeigt NMEA, Fix, HDOP, Position.",
+  "Hunt-Log wird ebenfalls geloescht.",
+  "Einzige Launcher-Rueckkehr.",
+  "Aenderungen bleiben gespeichert."
+};
+
 static constexpr int MENU_COUNT=sizeof(menuLabels)/sizeof(menuLabels[0]);
 
 String menuValue(int i){
@@ -452,13 +498,32 @@ String menuValue(int i){
 void drawMenu(){
   if(displaySleeping) return;
   drawHeader("FUCHS-EINSTELLUNGEN",TFT_CYAN);
-  int first=max(0,min(menuIndex-3,MENU_COUNT-7));
-  for(int row=0;row<7;row++){
-    int i=first+row; if(i>=MENU_COUNT) break; int y=28+row*20; bool sel=i==menuIndex;
-    if(sel) tft.fillRoundRect(4,y,312,18,4,TFT_DARKGREY);
-    tft.setTextDatum(ML_DATUM); tft.setTextColor(sel?TFT_YELLOW:TFT_WHITE,sel?TFT_DARKGREY:TFT_BLACK); tft.drawString(menuLabels[i],10,y+9,1);
-    tft.setTextDatum(MR_DATUM); tft.setTextColor(TFT_CYAN,sel?TFT_DARKGREY:TFT_BLACK); tft.drawString(menuValue(i),310,y+9,2);
+
+  // Four large rows instead of seven tiny rows.
+  const int visibleRows=4;
+  int first=max(0,min(menuIndex-1,MENU_COUNT-visibleRows));
+  for(int row=0;row<visibleRows;row++){
+    int i=first+row; if(i>=MENU_COUNT) break;
+    int y=28+row*24;
+    bool sel=i==menuIndex;
+    if(sel) tft.fillRoundRect(4,y,312,22,4,TFT_DARKGREY);
+
+    tft.setTextDatum(ML_DATUM);
+    tft.setTextColor(sel?TFT_YELLOW:TFT_WHITE,sel?TFT_DARKGREY:TFT_BLACK);
+    tft.drawString(menuLabels[i],10,y+11,2);
+
+    tft.setTextDatum(MR_DATUM);
+    tft.setTextColor(TFT_CYAN,sel?TFT_DARKGREY:TFT_BLACK);
+    tft.drawString(menuValue(i),310,y+11,2);
   }
+
+  // Context help for the highlighted setting.
+  tft.fillRoundRect(4,126,312,40,5,TFT_NAVY);
+  tft.setTextDatum(ML_DATUM);
+  tft.setTextColor(TFT_WHITE,TFT_NAVY);
+  tft.drawString(menuHelp1[menuIndex],10,137,2);
+  tft.setTextColor(TFT_LIGHTGREY,TFT_NAVY);
+  tft.drawString(menuHelp2[menuIndex],10,155,2);
 }
 void drawFound(){
   if(displaySleeping) return;
@@ -487,7 +552,7 @@ void updateGpsScreen(){
     tft.drawString("GPS-Modul braucht freie Sicht nach draussen.",10,136,1);
   }
   tft.setTextDatum(BR_DATUM); tft.setTextColor(TFT_DARKGREY,TFT_BLACK);
-  tft.drawString("Encoder = zurueck | SIDE 2.5s = Launcher",315,166,1);
+  tft.drawString("Encoder oder SIDE = zurueck",315,166,1);
 }
 void drawGpsScreen(){
   if(displaySleeping) return;
@@ -618,7 +683,6 @@ void pollInputs(){
   if(sideDown&&!sideWasDown){sidePressStart=millis();sideWasDown=true;wakeDisplay();}
   if(!sideDown&&sideWasDown){
     uint32_t held=millis()-sidePressStart;sideWasDown=false;
-    if(held>=SIDE_LAUNCHER_MS){returnToLauncher();return;}
     if(webMode){exitWebMode();return;}
     if(gpsScreen){gpsScreen=false;redraw();return;}
     if(held>=SIDE_FOUND_MS){markFound();inMenu=false;}
