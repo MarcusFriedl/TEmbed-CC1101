@@ -8,6 +8,7 @@
 #include <RadioLib.h>
 #include <TinyGPSPlus.h>
 #include <Adafruit_NeoPixel.h>
+#include <esp_sleep.h>
 
 // Fox Ultimate for LILYGO T-Embed CC1101 / CC1101 Plus
 // H4M/Mayhem Fox Hunt: tune AM to the configured frequency.
@@ -28,6 +29,10 @@ static constexpr int RGB_COUNT    = 8;
 static constexpr int PIN_GPS_RX   = 44;
 static constexpr int PIN_GPS_TX   = 43;
 static constexpr int PIN_TFT_BL   = 21;
+static constexpr uint32_t GPS_BAUD = 115200;
+static constexpr uint32_t GPS_FIX_MAX_AGE_MS = 6000;
+static constexpr uint32_t SIDE_FOUND_MS = 1200;
+static constexpr uint32_t SIDE_LAUNCHER_MS = 2500;
 static constexpr int SPI_SCK      = 11;
 static constexpr int SPI_MISO     = 10;
 static constexpr int SPI_MOSI     = 9;
@@ -35,7 +40,7 @@ static constexpr int SPI_MOSI     = 9;
 static constexpr float FREQ_MIN = 433.050f;
 static constexpr float FREQ_MAX = 434.790f;
 static constexpr float FREQ_DEFAULT = 433.920f;
-static constexpr char FW_VERSION[] = "1.0.0";
+static constexpr char FW_VERSION[] = "1.1.0";
 
 TFT_eSPI tft;
 SPIClass radioSPI(HSPI);
@@ -69,7 +74,7 @@ struct Settings {
 } cfg;
 
 bool hunting=false, foundMarked=false, displaySleeping=false, webMode=false, radioReady=false;
-bool inMenu=false, encWasDown=false, sideWasDown=false;
+bool inMenu=false, gpsScreen=false, gpsPortStarted=false, encWasDown=false, sideWasDown=false;
 uint32_t huntStartMs=0, nextTxMs=0, lastUserInputMs=0, beaconCount=0;
 uint32_t bestTimeSec=0, lastFoundSec=0, totalHunts=0, totalFound=0;
 uint32_t encPressStart=0, sidePressStart=0;
@@ -210,14 +215,28 @@ void reconfigureRadio(){
   radio.setOOK(true); pinMode(PIN_GDO0,OUTPUT); digitalWrite(PIN_GDO0,LOW);
 }
 
+void ensureGpsPort(){
+  if(gpsPortStarted) return;
+  gpsSerial.begin(GPS_BAUD,SERIAL_8N1,PIN_GPS_RX,PIN_GPS_TX);
+  gpsPortStarted=true;
+}
 void serviceGps(){
   if(!cfg.gpsEnabled) return;
-  while(gpsSerial.available()) gps.encode(gpsSerial.read());
+  ensureGpsPort();
+  while(gpsSerial.available()) gps.encode((char)gpsSerial.read());
+}
+bool gpsFixValid(){
+  return cfg.gpsEnabled && gps.location.isValid() && gps.location.age()<=GPS_FIX_MAX_AGE_MS;
 }
 String gpsStatus(){
-  if(!cfg.gpsEnabled) return "GPS OFF";
-  if(gps.location.isValid() && gps.location.age()<5000) return "GPS FIX "+String(gps.satellites.value());
-  return "GPS ...";
+  if(!cfg.gpsEnabled) return "GPS: AUS";
+  if(gps.charsProcessed()<10){
+    if(millis()<5000) return "GPS: warte auf Daten";
+    return "GPS: KEINE DATEN";
+  }
+  uint32_t sats=gps.satellites.isValid()?gps.satellites.value():0;
+  if(gpsFixValid()) return "GPS: FIX | Sat "+String(sats);
+  return "GPS: sucht | Sat "+String(sats);
 }
 
 void amToneFor(uint16_t hz,uint32_t durationMs){
@@ -316,6 +335,25 @@ uint32_t guardedCycleMs(uint32_t txEnvelopeMs){
   return cfg.intervalMs>guardMs?cfg.intervalMs:guardMs;
 }
 
+void returnToLauncher(){
+  hunting=false;
+  webMode=false;
+  if(radioReady) radio.standby();
+  digitalWrite(PIN_GDO0,LOW);
+  WiFi.softAPdisconnect(true);
+  WiFi.mode(WIFI_OFF);
+  wakeDisplay();
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextColor(TFT_YELLOW,TFT_BLACK);
+  tft.drawString("Zurueck zum Launcher...",160,78,4);
+  pixels.clear(); pixels.show();
+  delay(180);
+  esp_sleep_enable_timer_wakeup(1000000ULL);
+  delay(50);
+  esp_deep_sleep_start();
+}
+
 void startHunt(){
   if(webMode) return;
   hunting=true; foundMarked=false; beaconCount=0; huntStartMs=millis(); nextTxMs=millis()+300;
@@ -341,36 +379,79 @@ void drawHeader(const String &title,uint16_t color=TFT_ORANGE){
   tft.setTextDatum(MR_DATUM); tft.setTextColor(TFT_LIGHTGREY,TFT_DARKGREY); tft.drawString("v"+String(FW_VERSION),312,12,2);
 }
 
-void drawMain(){
-  if(displaySleeping) return;
-  drawHeader(hunting?"FOX ACTIVE":(foundMarked?"FOX FOUND":"FOX READY"),hunting?TFT_GREEN:TFT_ORANGE);
-  tft.setTextDatum(TL_DATUM); tft.setTextColor(TFT_WHITE,TFT_BLACK); tft.drawString(formatTime(elapsedSec()),10,34,6);
-  tft.setTextColor(TFT_CYAN,TFT_BLACK); tft.drawString(String(cfg.freqMHz,3)+" MHz",10,86,4);
-  tft.setTextColor(TFT_WHITE,TFT_BLACK); tft.drawString(modeName()+"  "+String(cfg.powerDbm)+" dBm",10,116,2);
-  tft.drawString(gpsStatus(),10,136,2);
-  tft.setTextDatum(TR_DATUM);
-  tft.drawString(hunting?("TX #"+String(beaconCount)):("Best "+(bestTimeSec?formatTime(bestTimeSec):"--")),310,136,2);
-  tft.setTextDatum(BR_DATUM); tft.setTextColor(TFT_DARKGREY,TFT_BLACK);
-  tft.drawString("SIDE start/stop | hold=FOUND | encoder=menu",315,166,1);
+void updateMainDynamic(){
+  if(displaySleeping || inMenu || gpsScreen || foundMarked) return;
+
+  // Only repaint changing rectangles. Full-screen redraws caused visible flicker.
+  tft.fillRect(6,28,308,55,TFT_BLACK);
+  tft.setTextDatum(TL_DATUM); tft.setTextColor(TFT_WHITE,TFT_BLACK);
+  tft.drawString(formatTime(elapsedSec()),10,34,6);
+
+  tft.fillRect(6,130,308,31,TFT_BLACK);
+  tft.setTextDatum(TL_DATUM); tft.setTextColor(gpsFixValid()?TFT_GREEN:(cfg.gpsEnabled?TFT_YELLOW:TFT_DARKGREY),TFT_BLACK);
+  tft.drawString(gpsStatus(),10,133,2);
+  if(gpsFixValid()){
+    tft.setTextColor(TFT_LIGHTGREY,TFT_BLACK);
+    tft.drawString(String(gps.location.lat(),5)+"  "+String(gps.location.lng(),5),10,151,1);
+  } else if(cfg.gpsEnabled && gps.charsProcessed()>0){
+    tft.setTextColor(TFT_DARKGREY,TFT_BLACK);
+    tft.drawString("NMEA-Zeichen: "+String(gps.charsProcessed()),10,151,1);
+  }
+
+  tft.setTextDatum(TR_DATUM); tft.setTextColor(TFT_WHITE,TFT_BLACK);
+  tft.drawString(hunting?("TX #"+String(beaconCount)):("Best "+(bestTimeSec?formatTime(bestTimeSec):"--")),310,133,2);
 }
 
-const char* menuLabels[]={"Mode","Frequency","Power","Interval","Pulse","Morse WPM","Tone","Message every","GPS","Data beacon","GPS in data","LEDs","Stealth","Stealth delay","Auto start","Web config","Reset stats","Back"};
+void drawMain(){
+  if(displaySleeping) return;
+  drawHeader(hunting?"FUCHS AKTIV":(foundMarked?"FUCHS GEFUNDEN":"FUCHS BEREIT"),hunting?TFT_GREEN:TFT_ORANGE);
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextColor(TFT_CYAN,TFT_BLACK); tft.drawString(String(cfg.freqMHz,3)+" MHz",10,86,4);
+  tft.setTextColor(TFT_WHITE,TFT_BLACK); tft.drawString("Modus: "+modeName()+"   Leistung: "+String(cfg.powerDbm)+" dBm",10,116,2);
+  tft.setTextDatum(BR_DATUM); tft.setTextColor(TFT_DARKGREY,TFT_BLACK);
+  tft.drawString("SIDE kurz Start | 1.2s FOUND | 2.5s Launcher | Encoder Menue",315,166,1);
+  updateMainDynamic();
+}
+
+const char* menuLabels[]={
+  "Sendemodus",
+  "Sendefrequenz",
+  "Sendeleistung",
+  "Abstand zwischen Signalen",
+  "Dauer kurzer Signalton",
+  "Morse-Geschwindigkeit",
+  "Tonhoehe",
+  "Hinweis senden alle N Signale",
+  "GPS-Empfaenger",
+  "FoxLink-Zusatzdaten senden",
+  "GPS-Position im FoxLink",
+  "LEDs",
+  "Display automatisch aus",
+  "Display aus nach",
+  "Jagd beim Einschalten starten",
+  "Web-Konfiguration oeffnen",
+  "GPS-Status anzeigen",
+  "Jagdstatistik loeschen",
+  "Zurueck zum Launcher",
+  "Menue schliessen"
+};
 static constexpr int MENU_COUNT=sizeof(menuLabels)/sizeof(menuLabels[0]);
 
 String menuValue(int i){
   switch(i){
-    case 0:return modeName();case 1:return String(cfg.freqMHz,3)+" MHz";case 2:return String(cfg.powerDbm)+" dBm";
-    case 3:return String(cfg.intervalMs)+" ms";case 4:return String(cfg.pulseMs)+" ms";case 5:return String(cfg.wpm);
-    case 6:return String(cfg.toneHz)+" Hz";case 7:return String(cfg.messageEvery);case 8:return cfg.gpsEnabled?"ON":"OFF";
-    case 9:return cfg.dataBeacon?"ON":"OFF";case 10:return cfg.includeGpsInData?"ON":"OFF";case 11:return cfg.ledsEnabled?"ON":"OFF";
-    case 12:return cfg.stealthEnabled?"ON":"OFF";case 13:return String(cfg.stealthAfterSec)+" s";case 14:return cfg.autoStart?"ON":"OFF";
-    case 15:return "OPEN";case 16:return "PRESS";default:return "";
+    case 0:return modeName(); case 1:return String(cfg.freqMHz,3)+" MHz"; case 2:return String(cfg.powerDbm)+" dBm";
+    case 3:return String(cfg.intervalMs)+" ms"; case 4:return String(cfg.pulseMs)+" ms"; case 5:return String(cfg.wpm)+" WPM";
+    case 6:return String(cfg.toneHz)+" Hz"; case 7:return "jedes "+String(cfg.messageEvery)+".";
+    case 8:return cfg.gpsEnabled?"AN":"AUS"; case 9:return cfg.dataBeacon?"AN":"AUS"; case 10:return cfg.includeGpsInData?"AN":"AUS";
+    case 11:return cfg.ledsEnabled?"AN":"AUS"; case 12:return cfg.stealthEnabled?"AN":"AUS"; case 13:return String(cfg.stealthAfterSec)+" s";
+    case 14:return cfg.autoStart?"AN":"AUS"; case 15:return "OEFFNEN"; case 16:return gpsFixValid()?"FIX":"ANZEIGEN";
+    case 17:return "DRUECKEN"; case 18:return "DRUECKEN"; default:return "";
   }
 }
 
 void drawMenu(){
   if(displaySleeping) return;
-  drawHeader("FOX SETTINGS",TFT_CYAN);
+  drawHeader("FUCHS-EINSTELLUNGEN",TFT_CYAN);
   int first=max(0,min(menuIndex-3,MENU_COUNT-7));
   for(int row=0;row<7;row++){
     int i=first+row; if(i>=MENU_COUNT) break; int y=28+row*20; bool sel=i==menuIndex;
@@ -381,12 +462,45 @@ void drawMenu(){
 }
 void drawFound(){
   if(displaySleeping) return;
-  drawHeader("FOUND!",TFT_GREEN); tft.setTextDatum(MC_DATUM);
+  drawHeader("GEFUNDEN!",TFT_GREEN); tft.setTextDatum(MC_DATUM);
   tft.setTextColor(TFT_GREEN,TFT_BLACK); tft.drawString(formatTime(lastFoundSec),160,70,7);
-  tft.setTextColor(TFT_WHITE,TFT_BLACK); tft.drawString("Best: "+(bestTimeSec?formatTime(bestTimeSec):"--"),160,125,4);
+  tft.setTextColor(TFT_WHITE,TFT_BLACK); tft.drawString("Bestzeit: "+(bestTimeSec?formatTime(bestTimeSec):"--"),160,125,4);
   tft.setTextColor(TFT_LIGHTGREY,TFT_BLACK); tft.drawString(gpsStatus(),160,153,2);
 }
-void redraw(){ if(displaySleeping)return; if(foundMarked&&!inMenu)drawFound(); else if(inMenu)drawMenu(); else drawMain(); }
+void updateGpsScreen(){
+  if(displaySleeping || !gpsScreen) return;
+  tft.fillRect(0,25,320,145,TFT_BLACK);
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextColor(gpsFixValid()?TFT_GREEN:TFT_YELLOW,TFT_BLACK);
+  tft.drawString(gpsStatus(),10,32,4);
+  tft.setTextColor(TFT_WHITE,TFT_BLACK);
+  tft.drawString("NMEA-Zeichen: "+String(gps.charsProcessed()),10,66,2);
+  tft.drawString("Satelliten: "+String(gps.satellites.isValid()?gps.satellites.value():0),10,86,2);
+  if(gps.hdop.isValid()) tft.drawString("HDOP: "+String(gps.hdop.hdop(),1),170,86,2);
+  if(gpsFixValid()){
+    tft.drawString("Breite: "+String(gps.location.lat(),6),10,108,2);
+    tft.drawString("Laenge: "+String(gps.location.lng(),6),10,128,2);
+    if(gps.altitude.isValid()) tft.drawString("Hoehe: "+String(gps.altitude.meters(),0)+" m",10,148,2);
+  } else {
+    tft.setTextColor(TFT_LIGHTGREY,TFT_BLACK);
+    tft.drawString(gps.charsProcessed()<10?"Keine seriellen GPS-Daten":"Daten da - warte auf Satellitenfix",10,112,2);
+    tft.drawString("GPS-Modul braucht freie Sicht nach draussen.",10,136,1);
+  }
+  tft.setTextDatum(BR_DATUM); tft.setTextColor(TFT_DARKGREY,TFT_BLACK);
+  tft.drawString("Encoder = zurueck | SIDE 2.5s = Launcher",315,166,1);
+}
+void drawGpsScreen(){
+  if(displaySleeping) return;
+  drawHeader("GPS-STATUS",TFT_CYAN);
+  updateGpsScreen();
+}
+void redraw(){
+  if(displaySleeping)return;
+  if(gpsScreen) drawGpsScreen();
+  else if(foundMarked&&!inMenu)drawFound();
+  else if(inMenu)drawMenu();
+  else drawMain();
+}
 
 String htmlEscape(String s){ s.replace("&","&amp;");s.replace("<","&lt;");s.replace(">","&gt;");s.replace("\"","&quot;");return s; }
 
@@ -460,13 +574,25 @@ void activateMenuItem(){
     case 5:cfg.wpm+=2;if(cfg.wpm>30)cfg.wpm=8;break;
     case 6:cfg.toneHz+=100;if(cfg.toneHz>1500)cfg.toneHz=400;break;
     case 7:cfg.messageEvery++;if(cfg.messageEvery>20)cfg.messageEvery=1;break;
-    case 8:cfg.gpsEnabled=!cfg.gpsEnabled;break; case 9:cfg.dataBeacon=!cfg.dataBeacon;break;
-    case 10:cfg.includeGpsInData=!cfg.includeGpsInData;break; case 11:cfg.ledsEnabled=!cfg.ledsEnabled;break;
-    case 12:cfg.stealthEnabled=!cfg.stealthEnabled;break; case 13:cfg.stealthAfterSec+=5;if(cfg.stealthAfterSec>60)cfg.stealthAfterSec=5;break;
+    case 8:
+      cfg.gpsEnabled=!cfg.gpsEnabled;
+      if(cfg.gpsEnabled) ensureGpsPort();
+      break;
+    case 9:cfg.dataBeacon=!cfg.dataBeacon;break;
+    case 10:cfg.includeGpsInData=!cfg.includeGpsInData;break;
+    case 11:cfg.ledsEnabled=!cfg.ledsEnabled;break;
+    case 12:cfg.stealthEnabled=!cfg.stealthEnabled;break;
+    case 13:cfg.stealthAfterSec+=5;if(cfg.stealthAfterSec>60)cfg.stealthAfterSec=5;break;
     case 14:cfg.autoStart=!cfg.autoStart;break;
     case 15:saveSettings();startWebMode();return;
-    case 16:bestTimeSec=lastFoundSec=totalHunts=totalFound=0;saveStats();LittleFS.remove("/huntlog.csv");break;
-    case 17:inMenu=false;saveSettings();reconfigureRadio();break;
+    case 16:
+      saveSettings(); inMenu=false; gpsScreen=true; ensureGpsPort(); drawGpsScreen(); return;
+    case 17:
+      bestTimeSec=lastFoundSec=totalHunts=totalFound=0;saveStats();LittleFS.remove("/huntlog.csv");break;
+    case 18:
+      saveSettings(); returnToLauncher(); return;
+    case 19:
+      inMenu=false;saveSettings();reconfigureRadio();redraw();return;
   }
   saveSettings(); reconfigureRadio(); redraw();
 }
@@ -482,6 +608,7 @@ void pollInputs(){
   if(encDown&&!encWasDown){encPressStart=millis();encWasDown=true;wakeDisplay();}
   if(!encDown&&encWasDown){
     uint32_t held=millis()-encPressStart;encWasDown=false;
+    if(gpsScreen){gpsScreen=false;redraw();return;}
     if(held>1000){cfg.stealthEnabled=!cfg.stealthEnabled;saveSettings();}
     else{if(!inMenu){inMenu=true;foundMarked=false;}else activateMenuItem();}
     redraw();
@@ -491,8 +618,10 @@ void pollInputs(){
   if(sideDown&&!sideWasDown){sidePressStart=millis();sideWasDown=true;wakeDisplay();}
   if(!sideDown&&sideWasDown){
     uint32_t held=millis()-sidePressStart;sideWasDown=false;
+    if(held>=SIDE_LAUNCHER_MS){returnToLauncher();return;}
     if(webMode){exitWebMode();return;}
-    if(held>1200){markFound();inMenu=false;}
+    if(gpsScreen){gpsScreen=false;redraw();return;}
+    if(held>=SIDE_FOUND_MS){markFound();inMenu=false;}
     else{if(hunting)stopHunt();else startHunt();inMenu=false;foundMarked=false;}
     redraw();
   }
@@ -510,7 +639,7 @@ void setup(){
   tft.begin();tft.setRotation(3);tft.setSwapBytes(true);tft.fillScreen(TFT_BLACK);
   drawHeader("FOX ULTIMATE",TFT_ORANGE);tft.setTextDatum(MC_DATUM);tft.setTextColor(TFT_WHITE,TFT_BLACK);tft.drawString("Booting...",160,82,4);
 
-  if(cfg.gpsEnabled)gpsSerial.begin(9600,SERIAL_8N1,PIN_GPS_RX,PIN_GPS_TX);
+  ensureGpsPort();
   radioReady=initRadio();
   if(!radioReady){tft.setTextColor(TFT_RED,TFT_BLACK);tft.drawString("CC1101 ERROR",160,120,4);}
   delay(400);lastUserInputMs=millis();redraw();allPixels(0,0,15);
@@ -523,10 +652,15 @@ void loop(){
   if(hunting&&radioReady&&(int32_t)(millis()-nextTxMs)>=0){
     uint32_t txMs=transmitBeacon();
     nextTxMs=millis()+guardedCycleMs(txMs);
-    if(!displaySleeping)drawMain();
+    if(!displaySleeping)updateMainDynamic();
   }
   maybeSleepDisplay();
   static uint32_t lastDraw=0;
-  if(!displaySleeping&&!inMenu&&millis()-lastDraw>1000){lastDraw=millis();if(foundMarked)drawFound();else drawMain();}
+  if(!displaySleeping&&!inMenu&&millis()-lastDraw>1000){
+    lastDraw=millis();
+    if(gpsScreen) updateGpsScreen();
+    else if(foundMarked) { /* static result screen - no full redraw needed */ }
+    else updateMainDynamic();
+  }
   delay(2);
 }
