@@ -30,16 +30,16 @@ jobs:
 
       - name: Prepare firmware
         run: |
-          cp .pio/build/fox_ultimate/firmware.bin FoxUltimate-TEmbed-v1.1.0.bin
+          cp .pio/build/fox_ultimate/firmware.bin FoxUltimate-TEmbed-v1.2.0.bin
           cp .pio/build/fox_ultimate/bootloader.bin FoxUltimate-bootloader.bin || true
           cp .pio/build/fox_ultimate/partitions.bin FoxUltimate-partitions.bin || true
 
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FoxUltimate-TEmbed-v1.1.0
+          name: FoxUltimate-TEmbed-v1.2.0
           path: |
-            FoxUltimate-TEmbed-v1.1.0.bin
+            FoxUltimate-TEmbed-v1.2.0.bin
             FoxUltimate-bootloader.bin
             FoxUltimate-partitions.bin
           if-no-files-found: warn
