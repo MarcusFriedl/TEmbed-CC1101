@@ -456,7 +456,7 @@ void drawMenu(){
   for(int row=0;row<7;row++){
     int i=first+row; if(i>=MENU_COUNT) break; int y=28+row*20; bool sel=i==menuIndex;
     if(sel) tft.fillRoundRect(4,y,312,18,4,TFT_DARKGREY);
-    tft.setTextDatum(ML_DATUM); tft.setTextColor(sel?TFT_YELLOW:TFT_WHITE,sel?TFT_DARKGREY:TFT_BLACK); tft.drawString(menuLabels[i],10,y+9,2);
+    tft.setTextDatum(ML_DATUM); tft.setTextColor(sel?TFT_YELLOW:TFT_WHITE,sel?TFT_DARKGREY:TFT_BLACK); tft.drawString(menuLabels[i],10,y+9,1);
     tft.setTextDatum(MR_DATUM); tft.setTextColor(TFT_CYAN,sel?TFT_DARKGREY:TFT_BLACK); tft.drawString(menuValue(i),310,y+9,2);
   }
 }
